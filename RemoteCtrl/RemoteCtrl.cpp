@@ -1,149 +1,146 @@
 ﻿// RemoteCtrl.cpp : 此文件包含 "main" 函数。程序执行将在此处开始并结束。
 //
-
-#include "pch.h"
-#include "framework.h"
-#include "RemoteCtrl.h"
-#include "ServerSocket.h"
-#include <direct.h>
-#include <atlimage.h>
+#include "pch.h"  // 包含预编译头文件
+#include "framework.h"  // 包含框架头文件
+#include "RemoteCtrl.h"  // 包含当前项目头文件
+#include "ServerSocket.h"  // 包含服务器套接字相关头文件
+#include <direct.h>  // 包含目录操作相关函数
+#include <atlimage.h>  // 包含ATL图像处理类
 
 #ifdef _DEBUG
-#define new DEBUG_NEW
+#define new DEBUG_NEW  // 调试模式下使用DEBUG_NEW宏
 #endif
-//#pragma comment( linker, "/subsystem:windows /entry:WinMainCRTStartup" )
-//#pragma comment( linker, "/subsystem:windows /entry:mainCRTStartup" )
-//#pragma comment( linker, "/subsystem:console /entry:mainCRTStartup" )
-//#pragma comment( linker, "/subsystem:console /entry:WinMainCRTStartup" )
+//#pragma comment( linker, "/subsystem:windows /entry:WinMainCRTStartup" )  // 注释：设置子系统为windows及入口函数
+//#pragma comment( linker, "/subsystem:windows /entry:mainCRTStartup" )  // 注释：设置子系统为windows及入口函数
+//#pragma comment( linker, "/subsystem:console /entry:mainCRTStartup" )  // 注释：设置子系统为console及入口函数
+//#pragma comment( linker, "/subsystem:console /entry:WinMainCRTStartup" )  // 注释：设置子系统为console及入口函数
 
 // 唯一的应用程序对象   
+CWinApp theApp;  // 定义MFC应用程序对象
 
-CWinApp theApp;
-
-using namespace std;
-void Dump(BYTE* pData, size_t nSize)
+using namespace std;  // 使用标准命名空间
+void Dump(BYTE* pData, size_t nSize)  // 定义数据打印函数，用于调试
 {
-	std::string strOut;
-	for (size_t i = 0; i < nSize; i++)
+	std::string strOut;  // 存储要输出的字符串
+	for (size_t i = 0; i < nSize; i++)  // 遍历数据
 	{
-		char buf[8] = "";
-		if (i > 0 && (i % 16 == 0))strOut += "\n";
-		snprintf(buf, sizeof(buf), "%02X ", pData[i] & 0xFF);
-		strOut += buf;
+		char buf[8] = "";  // 存储单个字节的十六进制表示
+		if (i > 0 && (i % 16 == 0))strOut += "\n";  // 每16个字节换行
+		snprintf(buf, sizeof(buf), "%02X ", pData[i] & 0xFF);  // 将字节转换为十六进制字符串
+		strOut += buf;  // 拼接字符串
 	}
-	strOut += "\n";
-	OutputDebugStringA(strOut.c_str());
+	strOut += "\n";  // 最后加一个换行
+	OutputDebugStringA(strOut.c_str());  // 输出调试信息
 }
 
-int MakeDriverInfo() {//1==>A 2==>B 3==>C ... 26==>Z
-	std::string result;
-	for (int i = 1; i <= 26; i++) {
-		if (_chdrive(i) == 0) {
-			if (result.size() > 0)
+int MakeDriverInfo() {//1==>A 2==>B 3==>C ... 26==>Z  // 定义获取磁盘驱动器信息的函数
+	std::string result;  // 存储驱动器信息结果
+	for (int i = 1; i <= 26; i++) {  // 遍历A-Z驱动器
+		if (_chdrive(i) == 0) {  // 检查驱动器是否存在
+			if (result.size() > 0)  // 如果已有内容，添加分隔符
 				result += ',';
-			result += 'A' + i - 1;
+			result += 'A' + i - 1;  // 添加驱动器字母
 		}
 	}
-	CPacket pack(1, (BYTE*)result.c_str(), result.size());//打包用的
-	Dump((BYTE*)pack.Data(), pack.Size());
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+	CPacket pack(1, (BYTE*)result.c_str(), result.size());//打包用的  // 创建包含驱动器信息的数据包
+	Dump((BYTE*)pack.Data(), pack.Size());  // 打印数据包内容
+	CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	return 0;  // 返回成功
 }
-#include <stdio.h>
-#include <io.h>
-#include <list>
+#include <stdio.h>  // 包含标准输入输出头文件
+#include <io.h>  // 包含输入输出相关函数
+#include <list>  // 包含列表容器
 
-
-int MakeDirectoryInfo() {
-	std::string strPath;
-	//std::list<FILEINFO> lstFileInfos;
-	if (CServerSocket::getInstance()->GetFilePath(strPath) == false) {
-		OutputDebugString(_T("当前的命令，不是获取文件列表，命令解析错误！！"));
-		return -1;
+int MakeDirectoryInfo() {  // 定义获取目录信息的函数
+	std::string strPath;  // 存储目录路径
+	//std::list<FILEINFO> lstFileInfos;  // 注释：存储文件信息的列表
+	if (CServerSocket::getInstance()->GetFilePath(strPath) == false) {  // 获取目录路径失败
+		OutputDebugString(_T("当前的命令，不是获取文件列表，命令解析错误！！"));  // 输出调试信息
+		return -1;  // 返回错误
 	}
-	if (_chdir(strPath.c_str()) != 0) {
-		FILEINFO finfo;
-		finfo.HasNext = FALSE;
-		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-		CServerSocket::getInstance()->Send(pack);
-		OutputDebugString(_T("没有权限访问目录！！"));
-		return -2;
+	if (_chdir(strPath.c_str()) != 0) {  // 切换到目标目录失败
+		FILEINFO finfo;  // 定义文件信息结构体
+		finfo.HasNext = FALSE;  // 设置没有后续文件
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		OutputDebugString(_T("没有权限访问目录！！"));  // 输出调试信息
+		return -2;  // 返回错误
 	}
-	_finddata_t fdata;
-	int hfind = 0;
-	if ((hfind = _findfirst("*", &fdata)) == -1) {
-		OutputDebugString(_T("没有找到任何文件！！"));
-		FILEINFO finfo;
-		finfo.HasNext = FALSE;
-		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-		CServerSocket::getInstance()->Send(pack);
-		return -3;
+	_finddata_t fdata;  // 定义文件查找结构体
+	int hfind = 0;  // 查找句柄
+	if ((hfind = _findfirst("*", &fdata)) == -1) {  // 查找第一个文件失败
+		OutputDebugString(_T("没有找到任何文件！！"));  // 输出调试信息
+		FILEINFO finfo;  // 定义文件信息结构体
+		finfo.HasNext = FALSE;  // 设置没有后续文件
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		return -3;  // 返回错误
 	}
-	int count = 0;
-	do {
-		FILEINFO finfo;
-		finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;
-		memcpy(finfo.szFileName, fdata.name, strlen(fdata.name));
-		TRACE("%s\r\n", finfo.szFileName);
-		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-		CServerSocket::getInstance()->Send(pack);
-		count++;
-	} while (!_findnext(hfind, &fdata));
-	TRACE("server: count = %d\r\n", count);
+	int count = 0;  // 记录文件数量
+	do {  // 遍历查找文件
+		FILEINFO finfo;  // 定义文件信息结构体
+		finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;  // 判断是否为目录
+		memcpy(finfo.szFileName, fdata.name, strlen(fdata.name));  // 复制文件名
+		TRACE("%s\r\n", finfo.szFileName);  // 输出文件名
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		count++;  // 增加文件计数
+	} while (!_findnext(hfind, &fdata));  // 查找下一个文件
+	TRACE("server: count = %d\r\n", count);  // 输出文件总数
 	//发送信息到控制端
-	FILEINFO finfo;
-	finfo.HasNext = FALSE;
-	CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+	FILEINFO finfo;  // 定义文件信息结构体
+	finfo.HasNext = FALSE;  // 设置没有后续文件
+	CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
+	CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	return 0;  // 返回成功
 }
 
-int RunFile() {
-	std::string strPath;
-	CServerSocket::getInstance()->GetFilePath(strPath);
-	ShellExecuteA(NULL, NULL, strPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
-	CPacket pack(3, NULL, 0);
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+int RunFile() {  // 定义运行文件的函数
+	std::string strPath;  // 存储文件路径
+	CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+	ShellExecuteA(NULL, NULL, strPath.c_str(), NULL, NULL, SW_SHOWNORMAL);  // 执行文件
+	CPacket pack(3, NULL, 0);  // 创建响应数据包
+	CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	return 0;  // 返回成功
 }
-#pragma warning(disable:4966) // fopen sprintf strcpy strstr 
-int DownloadFile() {
-	std::string strPath;
-	CServerSocket::getInstance()->GetFilePath(strPath);
-	long long data = 0;
-	FILE* pFile = NULL;
-	errno_t err = fopen_s(&pFile, strPath.c_str(), "rb");
-	if (err != 0) {
-		CPacket  pack(4, (BYTE*)&data, 8);
-		CServerSocket::getInstance()->Send(pack);
-		return -1;
+#pragma warning(disable:4966) // fopen sprintf strcpy strstr  // 禁用特定警告
+int DownloadFile() {  // 定义下载文件的函数
+	std::string strPath;  // 存储文件路径
+	CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+	long long data = 0;  // 存储文件大小
+	FILE* pFile = NULL;  // 文件指针
+	errno_t err = fopen_s(&pFile, strPath.c_str(), "rb");  // 打开文件
+	if (err != 0) {  // 打开文件失败
+		CPacket  pack(4, (BYTE*)&data, 8);  // 创建包含文件大小为0的数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		return -1;  // 返回错误
 	}
-	if (pFile != NULL) {
-		fseek(pFile, 0, SEEK_END);
-		data = _ftelli64(pFile);
-		CPacket head(4, (BYTE*)&data, 8);
-		CServerSocket::getInstance()->Send(head);
-		fseek(pFile, 0, SEEK_SET);
-		char buffer[1024] = "";
-		size_t rlen = 0;
-		do {
-			rlen = fread(buffer, 1, 1024, pFile);
-			CPacket pack(4, (BYTE*)buffer, rlen);
-			CServerSocket::getInstance()->Send(pack);
-		} while (rlen >= 1024);
-		fclose(pFile);
+	if (pFile != NULL) {  // 文件打开成功
+		fseek(pFile, 0, SEEK_END);  // 移动到文件末尾
+		data = _ftelli64(pFile);  // 获取文件大小
+		CPacket head(4, (BYTE*)&data, 8);  // 创建包含文件大小的数据包
+		CServerSocket::getInstance()->Send(head);  // 发送文件大小
+		fseek(pFile, 0, SEEK_SET);  // 移动到文件开头
+		char buffer[1024] = "";  // 存储文件数据的缓冲区
+		size_t rlen = 0;  // 读取的字节数
+		do {  // 循环读取文件内容
+			rlen = fread(buffer, 1, 1024, pFile);  // 读取数据
+			CPacket pack(4, (BYTE*)buffer, rlen);  // 创建包含文件数据的数据包
+			CServerSocket::getInstance()->Send(pack);  // 发送数据
+		} while (rlen >= 1024);  // 直到读取的字节数小于缓冲区大小
+		fclose(pFile);  // 关闭文件
 	}
-	CPacket pack(4, NULL, 0);
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+	CPacket pack(4, NULL, 0);  // 创建结束标志数据包
+	CServerSocket::getInstance()->Send(pack);  // 发送结束标志
+	return 0;  // 返回成功
 }
 
-int MouseEvent()
+int MouseEvent()  // 定义处理鼠标事件的函数
 {
-	MOUSEEV mouse;
-	if (CServerSocket::getInstance()->GetMouseEvent(mouse)) {
-		DWORD nFlags = 0;
-		switch (mouse.nButton) {
+	MOUSEEV mouse;  // 定义鼠标事件结构体
+	if (CServerSocket::getInstance()->GetMouseEvent(mouse)) {  // 获取鼠标事件成功
+		DWORD nFlags = 0;  // 鼠标事件标志
+		switch (mouse.nButton) {  // 根据鼠标按钮设置标志
 		case 0://左键
 			nFlags = 1;
 			break;
@@ -157,8 +154,8 @@ int MouseEvent()
 			nFlags = 8;
 			break;
 		}
-		if (nFlags != 8)SetCursorPos(mouse.ptXY.x, mouse.ptXY.y);
-		switch (mouse.nAction)
+		if (nFlags != 8)SetCursorPos(mouse.ptXY.x, mouse.ptXY.y);  // 如果有按键，设置鼠标位置
+		switch (mouse.nAction)  // 根据鼠标动作设置标志
 		{
 		case 0://单击
 			nFlags |= 0x10;
@@ -175,8 +172,8 @@ int MouseEvent()
 		default:
 			break;
 		}
-		TRACE("mouse event : %08X x %d y %d\r\n", nFlags, mouse.ptXY.x, mouse.ptXY.y);
-		switch (nFlags)
+		TRACE("mouse event : %08X x %d y %d\r\n", nFlags, mouse.ptXY.x, mouse.ptXY.y);  // 输出鼠标事件信息
+		switch (nFlags)  // 根据标志执行相应的鼠标事件
 		{
 		case 0x21://左键双击
 			mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
@@ -221,41 +218,41 @@ int MouseEvent()
 			mouse_event(MOUSEEVENTF_MOVE, mouse.ptXY.x, mouse.ptXY.y, 0, GetMessageExtraInfo());
 			break;
 		}
-		CPacket pack(4, NULL, 0);
-		CServerSocket::getInstance()->Send(pack);
+		CPacket pack(4, NULL, 0);  // 创建响应数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
 	}
-	else {
-		OutputDebugString(_T("获取鼠标操作参数失败！！"));
-		return -1;
+	else {  // 获取鼠标事件失败
+		OutputDebugString(_T("获取鼠标操作参数失败！！"));  // 输出调试信息
+		return -1;  // 返回错误
 	}
-	return 0;
+	return 0;  // 返回成功
 }
 
-int SendScreen()
+int SendScreen()  // 定义发送屏幕截图的函数
 {
-	CImage screen;//GDI
-	HDC hScreen = ::GetDC(NULL);
-	int nBitPerPixel = GetDeviceCaps(hScreen, BITSPIXEL);//24   ARGB8888 32bit RGB888 24bit RGB565  RGB444
-	int nWidth = GetDeviceCaps(hScreen, HORZRES);
-	int nHeight = GetDeviceCaps(hScreen, VERTRES);
-	screen.Create(nWidth, nHeight, nBitPerPixel);
-	BitBlt(screen.GetDC(), 0, 0, nWidth, nHeight, hScreen, 0, 0, SRCCOPY);
-	ReleaseDC(NULL, hScreen);
-	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, 0);
-	if (hMem == NULL)return -1;
-	IStream* pStream = NULL;
-	HRESULT ret = CreateStreamOnHGlobal(hMem, TRUE, &pStream);
-	if (ret == S_OK) {
-		screen.Save(pStream, Gdiplus::ImageFormatPNG);
-		LARGE_INTEGER bg = { 0 };
-		pStream->Seek(bg, STREAM_SEEK_SET, NULL);
-		PBYTE pData = (PBYTE)GlobalLock(hMem);
-		SIZE_T nSize = GlobalSize(hMem);
-		CPacket pack(6, pData, nSize);
-		CServerSocket::getInstance()->Send(pack);
-		GlobalUnlock(hMem);
+	CImage screen;//GDI  // 定义图像对象，用于存储屏幕截图
+	HDC hScreen = ::GetDC(NULL);  // 获取屏幕设备上下文
+	int nBitPerPixel = GetDeviceCaps(hScreen, BITSPIXEL);//24   ARGB8888 32bit RGB888 24bit RGB565  RGB444  // 获取屏幕每像素位数
+	int nWidth = GetDeviceCaps(hScreen, HORZRES);  // 获取屏幕宽度
+	int nHeight = GetDeviceCaps(hScreen, VERTRES);  // 获取屏幕高度
+	screen.Create(nWidth, nHeight, nBitPerPixel);  // 创建图像
+	BitBlt(screen.GetDC(), 0, 0, nWidth, nHeight, hScreen, 0, 0, SRCCOPY);  // 将屏幕内容复制到图像
+	ReleaseDC(NULL, hScreen);  // 释放屏幕设备上下文
+	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, 0);  // 分配全局内存
+	if (hMem == NULL)return -1;  // 内存分配失败，返回错误
+	IStream* pStream = NULL;  // 定义流对象
+	HRESULT ret = CreateStreamOnHGlobal(hMem, TRUE, &pStream);  // 创建流
+	if (ret == S_OK) {  // 流创建成功
+		screen.Save(pStream, Gdiplus::ImageFormatPNG);  // 将图像保存到流
+		LARGE_INTEGER bg = { 0 };  // 用于定位流的起始位置
+		pStream->Seek(bg, STREAM_SEEK_SET, NULL);  // 将流指针移到起始位置
+		PBYTE pData = (PBYTE)GlobalLock(hMem);  // 锁定全局内存并获取指针
+		SIZE_T nSize = GlobalSize(hMem);  // 获取全局内存大小
+		CPacket pack(6, pData, nSize);  // 创建包含屏幕截图数据的数据包
+		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		GlobalUnlock(hMem);  // 解锁全局内存
 	}
-	//screen.Save(_T("test2020.png"), Gdiplus::ImageFormatPNG);
+	//screen.Save(_T("test2020.png"), Gdiplus::ImageFormatPNG);  // 注释：保存图像到文件
 	/*
 	TRACE("png %d\r\n", GetTickCount64() - tick);
 	for (int i = 0; i < 10; i++) {
@@ -266,125 +263,125 @@ int SendScreen()
 		screen.Save(_T("test2020.jpg"), Gdiplus::ImageFormatJPEG);
 		TRACE("jpg %d\r\n", GetTickCount64() - tick) ;
 	}*/
-	pStream->Release();
-	GlobalFree(hMem);
-	screen.ReleaseDC();
-	return 0;
+	pStream->Release();  // 释放流对象
+	GlobalFree(hMem);  // 释放全局内存
+	screen.ReleaseDC();  // 释放图像的设备上下文
+	return 0;  // 返回成功
 }
-#include "LockInfoDialog.h"
-CLockInfoDialog dlg;
-unsigned threadid = 0;
+#include "LockInfoDialog.h"  // 包含锁定信息对话框头文件
+CLockInfoDialog dlg;  // 定义锁定信息对话框对象
+unsigned threadid = 0;  // 存储线程ID
 
-unsigned __stdcall threadLockDlg(void* arg)
+unsigned __stdcall threadLockDlg(void* arg)  // 定义锁定对话框线程函数
 {
-	TRACE("%s(%d):%d\r\n", __FUNCTION__, __LINE__, GetCurrentThreadId());
-	dlg.Create(IDD_DIALOG_INFO, NULL);
-	dlg.ShowWindow(SW_SHOW);
+	TRACE("%s(%d):%d\r\n", __FUNCTION__, __LINE__, GetCurrentThreadId());  // 输出线程信息
+	dlg.Create(IDD_DIALOG_INFO, NULL);  // 创建对话框
+	dlg.ShowWindow(SW_SHOW);  // 显示对话框
 	//遮蔽后台窗口
-	CRect rect;
-	rect.left = 0;
-	rect.top = 0;
-	rect.right = GetSystemMetrics(SM_CXFULLSCREEN);//w1
-	rect.bottom = GetSystemMetrics(SM_CYFULLSCREEN);
-	rect.bottom = LONG(rect.bottom * 1.10);
-	TRACE("right = %d bottom = %d\r\n", rect.right, rect.bottom);
-	dlg.MoveWindow(rect);
-	CWnd* pText = dlg.GetDlgItem(IDC_STATIC);
-	if (pText) {
-		CRect rtText;
-		pText->GetWindowRect(rtText);
-		int nWidth = rtText.Width();//w0
-		int x = (rect.right - nWidth) / 2;
-		int nHeight = rtText.Height();
-		int y = (rect.bottom - nHeight) / 2;
-		pText->MoveWindow(x, y, rtText.Width(), rtText.Height());
+	CRect rect;  // 定义矩形对象
+	rect.left = 0;  // 设置矩形左边界
+	rect.top = 0;  // 设置矩形上边界
+	rect.right = GetSystemMetrics(SM_CXFULLSCREEN);//w1  // 设置矩形右边界为屏幕宽度
+	rect.bottom = GetSystemMetrics(SM_CYFULLSCREEN);  // 设置矩形下边界为屏幕高度
+	rect.bottom = LONG(rect.bottom * 1.10);  // 适当增加下边界
+	TRACE("right = %d bottom = %d\r\n", rect.right, rect.bottom);  // 输出矩形信息
+	dlg.MoveWindow(rect);  // 移动对话框到指定位置和大小
+	CWnd* pText = dlg.GetDlgItem(IDC_STATIC);  // 获取静态文本控件
+	if (pText) {  // 如果获取成功
+		CRect rtText;  // 定义矩形对象
+		pText->GetWindowRect(rtText);  // 获取静态文本控件位置和大小
+		int nWidth = rtText.Width();//w0  // 获取控件宽度
+		int x = (rect.right - nWidth) / 2;  // 计算控件x坐标（居中）
+		int nHeight = rtText.Height();  // 获取控件高度
+		int y = (rect.bottom - nHeight) / 2;  // 计算控件y坐标（居中）
+		pText->MoveWindow(x, y, rtText.Width(), rtText.Height());  // 移动控件到居中位置
 	}
 
 	//窗口置顶
-	dlg.SetWindowPos(&dlg.wndTopMost, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+	dlg.SetWindowPos(&dlg.wndTopMost, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);  // 设置对话框置顶
 	//限制鼠标功能
-	ShowCursor(false);
+	ShowCursor(false);  // 隐藏鼠标光标
 	//隐藏任务栏
-	::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_HIDE);
+	::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_HIDE);  // 隐藏任务栏
 	//限制鼠标活动范围
-	dlg.GetWindowRect(rect);
-	rect.left = 0;
-	rect.top = 0;
-	rect.right = 1;
-	rect.bottom = 1;
-	ClipCursor(rect);
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-		if (msg.message == WM_KEYDOWN) {
-			TRACE("msg:%08X wparam:%08x lparam:%08X\r\n", msg.message, msg.wParam, msg.lParam);
-			if (msg.wParam == 0x41) {//按下a键 退出  ESC（1B)
-				break;
+	dlg.GetWindowRect(rect);  // 获取对话框位置和大小
+	rect.left = 0;  // 设置限制范围左边界
+	rect.top = 0;  // 设置限制范围上边界
+	rect.right = 1;  // 设置限制范围右边界
+	rect.bottom = 1;  // 设置限制范围下边界
+	ClipCursor(rect);  // 限制鼠标活动范围
+	MSG msg;  // 定义消息结构体
+	while (GetMessage(&msg, NULL, 0, 0)) {  // 消息循环
+		TranslateMessage(&msg);  // 转换消息
+		DispatchMessage(&msg);  // 分发消息
+		if (msg.message == WM_KEYDOWN) {  // 处理键盘按下消息
+			TRACE("msg:%08X wparam:%08x lparam:%08X\r\n", msg.message, msg.wParam, msg.lParam);  // 输出消息信息
+			if (msg.wParam == 0x41) {//按下a键 退出  ESC（1B)  // 如果按下A键
+				break;  // 退出消息循环
 			}
 		}
 	}
-	ClipCursor(NULL);
+	ClipCursor(NULL);  // 解除鼠标活动范围限制
 	//恢复鼠标
-	ShowCursor(true);
+	ShowCursor(true);  // 显示鼠标光标
 	//恢复任务栏
-	::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_SHOW);
-	dlg.DestroyWindow();
-	_endthreadex(0);
-	return 0;
+	::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_SHOW);  // 显示任务栏
+	dlg.DestroyWindow();  // 销毁对话框
+	_endthreadex(0);  // 结束线程
+	return 0;  // 返回
 }
 
-int LockMachine()
+int LockMachine()  // 定义锁定机器的函数
 {
-	if ((dlg.m_hWnd == NULL) || (dlg.m_hWnd == INVALID_HANDLE_VALUE)) {
-		//_beginthread(threadLockDlg, 0, NULL);
-		_beginthreadex(NULL, 0, threadLockDlg, NULL, 0, &threadid);
-		TRACE("threadid=%d\r\n", threadid);
+	if ((dlg.m_hWnd == NULL) || (dlg.m_hWnd == INVALID_HANDLE_VALUE)) {  // 如果对话框未创建
+		//_beginthread(threadLockDlg, 0, NULL);  // 注释：创建线程的另一种方式
+		_beginthreadex(NULL, 0, threadLockDlg, NULL, 0, &threadid);  // 创建线程
+		TRACE("threadid=%d\r\n", threadid);  // 输出线程ID
 	}
-	CPacket pack(7, NULL, 0);
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+	CPacket pack(7, NULL, 0);  // 创建响应数据包
+	CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	return 0;  // 返回成功
 }
 
-int UnlockMachine()
+int UnlockMachine()  // 定义解锁机器的函数
 {
-	//dlg.SendMessage(WM_KEYDOWN, 0x41, 0x01E0001);
-	//::SendMessage(dlg.m_hWnd, WM_KEYDOWN, 0x41, 0x01E0001);
-	PostThreadMessage(threadid, WM_KEYDOWN, 0x41, 0);
-	CPacket pack(8, NULL, 0);
-	CServerSocket::getInstance()->Send(pack);
-	return 0;
+	//dlg.SendMessage(WM_KEYDOWN, 0x41, 0x01E0001);  // 注释：发送按键消息的另一种方式
+	//::SendMessage(dlg.m_hWnd, WM_KEYDOWN, 0x41, 0x01E0001);  // 注释：发送按键消息的另一种方式
+	PostThreadMessage(threadid, WM_KEYDOWN, 0x41, 0);  // 向锁定线程发送A键按下消息
+	CPacket pack(8, NULL, 0);  // 创建响应数据包
+	CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	return 0;  // 返回成功
 }
 
-int TestConnect()
+int TestConnect()  // 定义测试连接的函数
 {
-	CPacket pack(1981, NULL, 0);
-	bool ret = CServerSocket::getInstance()->Send(pack);
-	TRACE("Send ret = %d\r\n", ret);
-	return 0;
+	CPacket pack(1981, NULL, 0);  // 创建测试连接数据包
+	bool ret = CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	TRACE("Send ret = %d\r\n", ret);  // 输出发送结果
+	return 0;  // 返回成功
 }
 
-int DeleteLocalFile()
+int DeleteLocalFile()  // 定义删除本地文件的函数
 {
-	std::string strPath;
-	CServerSocket::getInstance()->GetFilePath(strPath);
-	TCHAR sPath[MAX_PATH] = _T("");
-	//mbstowcs(sPath, strPath.c_str(), strPath.size()); //中文容易乱码
-	MultiByteToWideChar(
+	std::string strPath;  // 存储文件路径
+	CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+	TCHAR sPath[MAX_PATH] = _T("");  // 存储宽字符文件路径
+	//mbstowcs(sPath, strPath.c_str(), strPath.size()); //中文容易乱码  // 注释：转换字符串的另一种方式，可能有乱码
+	MultiByteToWideChar(  // 多字节转宽字符
 		CP_ACP, 0, strPath.c_str(), strPath.size(), sPath,
 		sizeof(sPath) / sizeof(TCHAR));
-	DeleteFileA(strPath.c_str());
-	CPacket pack(9, NULL, 0);
-	bool ret = CServerSocket::getInstance()->Send(pack);
-	TRACE("Send ret = %d\r\n", ret);
-	return 0;
+	DeleteFileA(strPath.c_str());  // 删除文件
+	CPacket pack(9, NULL, 0);  // 创建响应数据包
+	bool ret = CServerSocket::getInstance()->Send(pack);  // 发送数据包
+	TRACE("Send ret = %d\r\n", ret);  // 输出发送结果
+	return 0;  // 返回成功
 }
 
-int ExcuteCommand(int nCmd)
+int ExcuteCommand(int nCmd)  // 定义执行命令的函数
 {
-	int ret = 0;
+	int ret = 0;  // 存储执行结果
 	//全局的静态变量
-	switch (nCmd) {
+	switch (nCmd) {  // 根据命令号执行相应操作
 	case 1://查看磁盘分区
 		ret = MakeDriverInfo();
 		break;
@@ -416,68 +413,64 @@ int ExcuteCommand(int nCmd)
 		ret = TestConnect();
 		break;
 	}
-	return ret;
+	return ret;  // 返回执行结果
 }
 
-int main()
+int main()  // 主函数
 {
-	int nRetCode = 0;
+	int nRetCode = 0;  // 存储返回代码
 
-	HMODULE hModule = ::GetModuleHandle(nullptr);
+	HMODULE hModule = ::GetModuleHandle(nullptr);  // 获取模块句柄
 
-	if (hModule != nullptr)
+	if (hModule != nullptr)  // 模块句柄有效
 	{
 		// 初始化 MFC 并在失败时显示错误    
-		if (!AfxWinInit(hModule, nullptr, ::GetCommandLine(), 0))
+		if (!AfxWinInit(hModule, nullptr, ::GetCommandLine(), 0))  // 初始化MFC失败
 		{
 			// TODO: 在此处为应用程序的行为编写代码。
-			wprintf(L"错误: MFC 初始化失败\n");
-			nRetCode = 1;
+			wprintf(L"错误: MFC 初始化失败\n");  // 输出错误信息
+			nRetCode = 1;  // 设置返回代码为错误
 		}
-		else
+		else  // MFC初始化成功
 		{
 			//1 进度的可控性 2 对接的方便性 3 可行性评估，提早暴露风险
 			// TODO: socket、bind、listen、accept、read、write、close
 			//套接字初始化
-			CServerSocket* pserver = CServerSocket::getInstance();
-			int count = 0;
-			if (pserver->InitSocket() == false) {
-				MessageBox(NULL, _T("网络初始化异常，未能成功初始hi，请检查网络状态！"), _T("网络初始化失败"), MB_OK | MB_ICONERROR);
-				exit(0);
+			CServerSocket* pserver = CServerSocket::getInstance();  // 获取服务器套接字实例
+			int count = 0;  // 记录连接失败次数
+			if (pserver->InitSocket() == false) {  // 初始化套接字失败
+				MessageBox(NULL, _T("网络初始化异常，未能成功初始hi，请检查网络状态！"), _T("网络初始化失败"), MB_OK | MB_ICONERROR);  // 显示错误消息框
+				exit(0);  // 退出程序
 			}
-			while (CServerSocket::getInstance() != NULL) {
-				if (pserver->AcceptClient() == false) {
-					if (count >= 3) {
-						MessageBox(NULL, _T("多次无法正常接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
-						exit(0);
+			while (CServerSocket::getInstance() != NULL) {  // 循环处理连接
+				if (pserver->AcceptClient() == false) {  // 接受客户端连接失败
+					if (count >= 3) {  // 失败次数超过3次
+						MessageBox(NULL, _T("多次无法正常接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 显示错误消息框
+						exit(0);  // 退出程序
 					}
-					MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
-					count++;
+					MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 显示错误消息框
+					count++;  // 增加失败计数
 				}
-				TRACE("AcceptClient return true\r\n");
-				int ret = pserver->DealCommand();
-				TRACE("DealCommand ret %d\r\n", ret);
-				if (ret > 0) {
-					ret = ExcuteCommand(ret);
-					if (ret != 0) {
-						TRACE("执行命令失败：%d ret=%d\r\n", pserver->GetPacket().sCmd, ret);
+				TRACE("AcceptClient return true\r\n");  // 输出连接成功信息
+				int ret = pserver->DealCommand();  // 处理命令
+				TRACE("DealCommand ret %d\r\n", ret);  // 输出处理结果
+				if (ret > 0) {  // 命令有效
+					ret = ExcuteCommand(ret);  // 执行命令
+					if (ret != 0) {  // 执行命令失败
+						TRACE("执行命令失败：%d ret=%d\r\n", pserver->GetPacket().sCmd, ret);  // 输出错误信息
 					}
-					pserver->CloseClient();
-					TRACE("Command has done!\r\n");
+					pserver->CloseClient();  // 关闭客户端连接
+					TRACE("Command has done!\r\n");  // 输出命令完成信息
 				}
 			}
 		}
 	}
-	else
+	else  // 模块句柄无效
 	{
 		// TODO: 更改错误代码以符合需要
-		wprintf(L"错误: GetModuleHandle 失败\n");
-		nRetCode = 1;
+		wprintf(L"错误: GetModuleHandle 失败\n");  // 输出错误信息
+		nRetCode = 1;  // 设置返回代码为错误
 	}
 
-	return nRetCode;
+	return nRetCode;  // 返回结果
 }
-
-
-
-
