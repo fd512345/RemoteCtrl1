@@ -101,7 +101,7 @@ public:
 		*(WORD*)pData = sCmd; pData += 2;  // 写入命令
 		memcpy(pData, strData.c_str(), strData.size()); pData += strData.size();  // 写入数据
 		*(WORD*)pData = sSum;  // 写入校验和
-		return strOut.c_str();  // 返回字节流
+		return strOut.c_str();  // 返回字节流 1
 	}
 
 public:
