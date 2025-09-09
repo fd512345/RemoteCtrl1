@@ -3,7 +3,7 @@
 #include <map>
 #include <atlimage.h>  // 包含ATL图像处理类
 #include <direct.h>  // 包含目录操作相关函数
-#include "ServerSocket.h"
+#include "Packet.h"
 #include "EdoyunTool.h"
 #include <stdio.h>  // 包含标准输入输出头文件
 #include <io.h>  // 包含输入输出相关函数
@@ -16,9 +16,22 @@ class CCommand
 public:
 	CCommand();
 	~CCommand() {}
-	int ExecuteCommand(int nCmd);
+	int ExecuteCommand(int nCmd, std::list<CPacket>& lstPacket, CPacket& inPacket);
+	static void RunCommand(void* arg, int status, std::list<CPacket>& lstPacket, CPacket& inPacket)
+	{  // 定义静态函数RunCommand，接收void*类型的arg和int类型的status参数
+		CCommand* thiz = (CCommand*)arg;  // 将arg强制转换为CCommand*类型并赋值给thiz
+		if (status > 0) {  // 如果status大于0
+			int ret = thiz->ExecuteCommand(status, lstPacket,inPacket);  // 调用thiz指向的CCommand对象的ExcuteCommand方法，传入status，返回值存入ret
+			if (ret != 0) {  // 如果执行命令返回值ret不等于0
+				TRACE("执行命令失败：%d ret=%d\r\n", status, ret);  // 输出执行命令失败的调试信息
+			}
+		}
+		else {  // 如果status小于等于0
+			MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 弹出提示框，提示接入用户失败
+		}
+	}
 protected:
-	typedef int (CCommand::* CMDFUNC)(); // 成员函数指针
+	typedef int (CCommand::* CMDFUNC)(std::list<CPacket>&, CPacket& inPacket); // 成员函数指针
 	std::map<int, CMDFUNC> m_mapFunction; // 从命令号到功能的映射
 	CLockInfoDialog dlg;  // 定义锁定信息对话框对象
 	unsigned threadid;  // 存储线程ID
@@ -86,7 +99,7 @@ protected:
 		::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_SHOW);  // 显示任务栏
 		dlg.DestroyWindow();  // 销毁对话框
 	}
-	int MakeDriverInfo() {//1==>A 2==>B 3==>C ... 26==>Z  // 定义获取磁盘驱动器信息的函数
+	int MakeDriverInfo(std::list<CPacket>& lstPacket, CPacket& inPacket) {//1==>A 2==>B 3==>C ... 26==>Z  // 定义获取磁盘驱动器信息的函数
 		std::string result;  // 存储驱动器信息结果
 		for (int i = 1; i <= 26; i++) {  // 遍历A-Z驱动器
 			if (_chdrive(i) == 0) {  // 检查驱动器是否存在
@@ -95,24 +108,19 @@ protected:
 				result += 'A' + i - 1;  // 添加驱动器字母
 			}
 		}
-		CPacket pack(1, (BYTE*)result.c_str(), result.size());//打包用的  // 创建包含驱动器信息的数据包
-		CEdoyunTool::Dump((BYTE*)pack.Data(), pack.Size());  // 打印数据包内容
-		CServerSocket::getInstance()->Send(pack);  // 发送数据包
-		return 0;  // 返回成功
+
+		lstPacket.push_back(CPacket(1, (BYTE*)result.c_str(), result.size()));  // 将构造的CPacket对象添加到lstPacket容器中，其中CPacket的构造参数分别为1、result的C风格字符串指针（转换为BYTE*）、result的大小		return 0;  // 返回成功
+		return 0;
 	}
 
-	int MakeDirectoryInfo() {  // 定义获取目录信息的函数
-		std::string strPath;  // 存储目录路径
+	int MakeDirectoryInfo(std::list<CPacket>& lstPacket, CPacket& inPacket) {  // 定义获取目录信息的函数
+		std::string strPath = inPacket.strData;  // 存储目录路径
 		//std::list<FILEINFO> lstFileInfos;  // 注释：存储文件信息的列表
-		if (CServerSocket::getInstance()->GetFilePath(strPath) == false) {  // 获取目录路径失败
-			OutputDebugString(_T("当前的命令，不是获取文件列表，命令解析错误！！"));  // 输出调试信息
-			return -1;  // 返回错误
-		}
+
 		if (_chdir(strPath.c_str()) != 0) {  // 切换到目标目录失败
 			FILEINFO finfo;  // 定义文件信息结构体
 			finfo.HasNext = FALSE;  // 设置没有后续文件
-			CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
+			lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			OutputDebugString(_T("没有权限访问目录！！"));  // 输出调试信息
 			return -2;  // 返回错误
 		}
@@ -122,8 +130,7 @@ protected:
 			OutputDebugString(_T("没有找到任何文件！！"));  // 输出调试信息
 			FILEINFO finfo;  // 定义文件信息结构体
 			finfo.HasNext = FALSE;  // 设置没有后续文件
-			CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
+			lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			return -3;  // 返回错误
 		}
 		int count = 0;  // 记录文件数量
@@ -132,62 +139,53 @@ protected:
 			finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;  // 判断是否为目录
 			memcpy(finfo.szFileName, fdata.name, strlen(fdata.name));  // 复制文件名
 			TRACE("%s\r\n", finfo.szFileName);  // 输出文件名
-			CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
+			lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			count++;  // 增加文件计数
 		} while (!_findnext(hfind, &fdata));  // 查找下一个文件
 		TRACE("server: count = %d\r\n", count);  // 输出文件总数
 		//发送信息到控制端
 		FILEINFO finfo;  // 定义文件信息结构体
 		finfo.HasNext = FALSE;  // 设置没有后续文件
-		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));  // 创建数据包
-		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
 
-	int RunFile() {  // 定义运行文件的函数
-		std::string strPath;  // 存储文件路径
-		CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+	int RunFile(std::list<CPacket>& lstPacket, CPacket& inPacket) {  // 定义运行文件的函数
+		std::string strPath = inPacket.strData;  // 存储目录路径
 		ShellExecuteA(NULL, NULL, strPath.c_str(), NULL, NULL, SW_SHOWNORMAL);  // 执行文件
-		CPacket pack(3, NULL, 0);  // 创建响应数据包
-		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		lstPacket.push_back(CPacket(3, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
-	int DownloadFile() {  // 定义下载文件的函数
-		std::string strPath;  // 存储文件路径
-		CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+	int DownloadFile(std::list<CPacket>& lstPacket, CPacket& inPacket) {  // 定义下载文件的函数
+		std::string strPath = inPacket.strData;  // 存储目录路径
 		long long data = 0;  // 存储文件大小
 		FILE* pFile = NULL;  // 文件指针
 		errno_t err = fopen_s(&pFile, strPath.c_str(), "rb");  // 打开文件
 		if (err != 0) {  // 打开文件失败
-			CPacket  pack(4, (BYTE*)&data, 8);  // 创建包含文件大小为0的数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
+			lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			return -1;  // 返回错误
 		}
 		if (pFile != NULL) {  // 文件打开成功
 			fseek(pFile, 0, SEEK_END);  // 移动到文件末尾
 			data = _ftelli64(pFile);  // 获取文件大小
-			CPacket head(4, (BYTE*)&data, 8);  // 创建包含文件大小的数据包
-			CServerSocket::getInstance()->Send(head);  // 发送文件大小
+			lstPacket.push_back(CPacket(4, NULL, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			fseek(pFile, 0, SEEK_SET);  // 移动到文件开头
 			char buffer[1024] = "";  // 存储文件数据的缓冲区
 			size_t rlen = 0;  // 读取的字节数
 			do {  // 循环读取文件内容
 				rlen = fread(buffer, 1, 1024, pFile);  // 读取数据
-				CPacket pack(4, (BYTE*)buffer, rlen);  // 创建包含文件数据的数据包
-				CServerSocket::getInstance()->Send(pack);  // 发送数据
+				lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			} while (rlen >= 1024);  // 直到读取的字节数小于缓冲区大小
 			fclose(pFile);  // 关闭文件
 		}
-		CPacket pack(4, NULL, 0);  // 创建结束标志数据包
-		CServerSocket::getInstance()->Send(pack);  // 发送结束标志
+		lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
 
-	int MouseEvent()  // 定义处理鼠标事件的函数
+	int MouseEvent(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义处理鼠标事件的函数
 	{
 		MOUSEEV mouse;  // 定义鼠标事件结构体
-		if (CServerSocket::getInstance()->GetMouseEvent(mouse)) {  // 获取鼠标事件成功
+		memcpy(&mouse, inPacket.strData.c_str(), sizeof(MOUSEEV));  // 复制事件数据
 			DWORD nFlags = 0;  // 鼠标事件标志
 			switch (mouse.nButton) {  // 根据鼠标按钮设置标志
 			case 0://左键
@@ -267,17 +265,12 @@ protected:
 				mouse_event(MOUSEEVENTF_MOVE, mouse.ptXY.x, mouse.ptXY.y, 0, GetMessageExtraInfo());
 				break;
 			}
-			CPacket pack(4, NULL, 0);  // 创建响应数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
-		}
-		else {  // 获取鼠标事件失败
-			OutputDebugString(_T("获取鼠标操作参数失败！！"));  // 输出调试信息
-			return -1;  // 返回错误
-		}
+			lstPacket.push_back(CPacket(5, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
+		
 		return 0;  // 返回成功
 	}
 
-	int SendScreen()  // 定义发送屏幕截图的函数
+	int SendScreen(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义发送屏幕截图的函数
 	{
 		CImage screen;//GDI  // 定义图像对象，用于存储屏幕截图
 		HDC hScreen = ::GetDC(NULL);  // 获取屏幕设备上下文
@@ -297,73 +290,43 @@ protected:
 			pStream->Seek(bg, STREAM_SEEK_SET, NULL);  // 将流指针移到起始位置
 			PBYTE pData = (PBYTE)GlobalLock(hMem);  // 锁定全局内存并获取指针
 			SIZE_T nSize = GlobalSize(hMem);  // 获取全局内存大小
-			CPacket pack(6, pData, nSize);  // 创建包含屏幕截图数据的数据包
-			CServerSocket::getInstance()->Send(pack);  // 发送数据包
+			lstPacket.push_back(CPacket(6, pData, nSize));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			GlobalUnlock(hMem);  // 解锁全局内存
 		}
-		//screen.Save(_T("test2020.png"), Gdiplus::ImageFormatPNG);  // 注释：保存图像到文件
-		/*
-		TRACE("png %d\r\n", GetTickCount64() - tick);
-		for (int i = 0; i < 10; i++) {
-			DWORD tick = GetTickCount64();
-			screen.Save(_T("test2020.png"), Gdiplus::ImageFormatPNG);
-			TRACE("png %d\r\n", GetTickCount64() - tick);
-			tick = GetTickCount64();
-			screen.Save(_T("test2020.jpg"), Gdiplus::ImageFormatJPEG);
-			TRACE("jpg %d\r\n", GetTickCount64() - tick) ;
-		}*/
 		pStream->Release();  // 释放流对象
 		GlobalFree(hMem);  // 释放全局内存
 		screen.ReleaseDC();  // 释放图像的设备上下文
 		return 0;  // 返回成功
 	}
-	int LockMachine()  // 定义锁定机器的函数
+	int LockMachine(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义锁定机器的函数
 	{
 		if ((dlg.m_hWnd == NULL) || (dlg.m_hWnd == INVALID_HANDLE_VALUE)) {  // 如果对话框未创建
 			//_beginthread(threadLockDlg, 0, NULL);  // 注释：创建线程的另一种方式
 			_beginthreadex(NULL, 0, &CCommand::threadLockDlg, this, 0, &threadid);  // 创建线程
 			TRACE("threadid=%d\r\n", threadid);  // 输出线程ID
 		}
-		CPacket pack(7, NULL, 0);  // 创建响应数据包
-		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		lstPacket.push_back(CPacket(7, NULL, 0));  // 创建响应数据包
 		return 0;  // 返回成功
 	}
 
-	int UnlockMachine()  // 定义解锁机器的函数
+	int UnlockMachine(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义解锁机器的函数
 	{
 		//dlg.SendMessage(WM_KEYDOWN, 0x41, 0x01E0001);  // 注释：发送按键消息的另一种方式
 		//::SendMessage(dlg.m_hWnd, WM_KEYDOWN, 0x41, 0x01E0001);  // 注释：发送按键消息的另一种方式
 		PostThreadMessage(threadid, WM_KEYDOWN, 0x41, 0);  // 向锁定线程发送A键按下消息
-		CPacket pack(8, NULL, 0);  // 创建响应数据包
-		CServerSocket::getInstance()->Send(pack);  // 发送数据包
+		lstPacket.push_back(CPacket(8, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
 
-	int TestConnect()  // 定义测试连接的函数
+	int TestConnect(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义测试连接的函数
 	{
-		CPacket pack(1981, NULL, 0);  // 创建测试连接数据包
-		bool ret = CServerSocket::getInstance()->Send(pack);  // 发送数据包
-		TRACE("Send ret = %d\r\n", ret);  // 输出发送结果
+		lstPacket.push_back(CPacket(1981, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
 
-	int DeleteLocalFile()  // 定义删除本地文件的函数
+	int DeleteLocalFile(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义删除本地文件的函数
 	{
-		//std::string strPath;  // 存储文件路径
-		//CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
-		//TCHAR sPath[MAX_PATH] = _T("");  // 存储宽字符文件路径
-		////mbstowcs(sPath, strPath.c_str(), strPath.size()); //中文容易乱码  // 注释：转换字符串的另一种方式，可能有乱码
-		//MultiByteToWideChar(  // 多字节转宽字符
-		//	CP_ACP, 0, strPath.c_str(), strPath.size(), sPath,
-		//	sizeof(sPath) / sizeof(TCHAR));
-		//DeleteFileA(strPath.c_str());  // 删除文件
-		//CPacket pack(9, NULL, 0);  // 创建响应数据包
-		//bool ret = CServerSocket::getInstance()->Send(pack);  // 发送数据包
-		//TRACE("Send ret = %d\r\n", ret);  // 输出发送结果
-		//return 0;  // 返回成功
-
-		std::string strPath;  // 存储文件路径
-		CServerSocket::getInstance()->GetFilePath(strPath);  // 获取文件路径
+		std::string strPath = inPacket.strData;  // 存储目录路径
 
 		// 将TCHAR改为wchar_t，与LPWSTR类型匹配
 		wchar_t sPath[MAX_PATH] = L"";  // 存储宽字符文件路径，使用宽字符初始化
@@ -382,10 +345,7 @@ protected:
 
 		// 保留ANSI版本删除文件（如果确实需要）
 		DeleteFileA(strPath.c_str());  // 删除文件
-
-		CPacket pack(9, NULL, 0);  // 创建响应数据包
-		bool ret = CServerSocket::getInstance()->Send(pack);  // 发送数据包
-		TRACE("Send ret = %d\r\n", ret);  // 输出发送结果
+		lstPacket.push_back(CPacket(9, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 		return 0;  // 返回成功
 	}
 };

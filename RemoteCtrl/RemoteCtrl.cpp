@@ -36,37 +36,19 @@ int main()  // 主函数
 		}
 		else  // MFC初始化成功
 		{
-			//1 进度的可控性 2 对接的方便性 3 可行性评估，提早暴露风险
-			// TODO: socket、bind、listen、accept、read、write、close
-			//套接字初始化
 			CCommand cmd;  // 定义命令处理对象
-			CServerSocket* pserver = CServerSocket::getInstance();  // 获取服务器套接字实例
-			int count = 0;  // 记录连接失败次数
-			if (pserver->InitSocket() == false) {  // 初始化套接字失败
-				MessageBox(NULL, _T("网络初始化异常，未能成功初始hi，请检查网络状态！"), _T("网络初始化失败"), MB_OK | MB_ICONERROR);  // 显示错误消息框
+			int ret = CServerSocket::getInstance()->Run(&CCommand::RunCommand, &cmd);  // 调用服务器对象的Run方法，传入NULL和cmd的地址，返回值存入ret
+			switch (ret) {  // 根据ret的值进行分支判断
+			case -1:  // 当ret为-1时，网络初始化异常的情况
+				MessageBox(NULL, _T("网络初始化异常，未能成功初始， 请检查网络状态！"), _T("网络初始化失败"), MB_OK | MB_ICONERROR);  // 弹出错误提示框
 				exit(0);  // 退出程序
+				break;  // 跳出case
+			case -2:  // 当ret为-2时，多次接入用户失败的情况
+				MessageBox(NULL, _T("多次无法正常接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 弹出错误提示框
+				exit(0);  // 退出程序
+				break;  // 跳出case
 			}
-			while (CServerSocket::getInstance() != NULL) {  // 循环处理连接
-				if (pserver->AcceptClient() == false) {  // 接受客户端连接失败
-					if (count >= 3) {  // 失败次数超过3次
-						MessageBox(NULL, _T("多次无法正常接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 显示错误消息框
-						exit(0);  // 退出程序
-					}
-					MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);  // 显示错误消息框
-					count++;  // 增加失败计数
-				}
-				TRACE("AcceptClient return true\r\n");  // 输出连接成功信息
-				int ret = pserver->DealCommand();  // 处理命令
-				TRACE("DealCommand ret %d\r\n", ret);  // 输出处理结果
-				if (ret > 0) {  // 命令有效
-					ret = cmd.ExecuteCommand(ret);  // 执行命令
-					if (ret != 0) {  // 执行命令失败
-						TRACE("执行命令失败：%d ret=%d\r\n", pserver->GetPacket().sCmd, ret);  // 输出错误信息
-					}
-					pserver->CloseClient();  // 关闭客户端连接
-					TRACE("Command has done!\r\n");  // 输出命令完成信息
-				}
-			}
+			
 		}
 	}
 	else  // 模块句柄无效
