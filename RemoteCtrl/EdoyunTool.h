@@ -13,7 +13,7 @@ public:
 			strOut += buf;  // 拼接字符串
 		}
 		strOut += "\n";  // 最后加一个换行
-		OutputDebugStringA(strOut.c_str());  // 输出调试信息
+		OutputDebugStringA(strOut.c_str());  // 输出调试信息 
 	}
 
 };
