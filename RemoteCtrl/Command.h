@@ -9,7 +9,7 @@
 #include <io.h>  // 包含输入输出相关函数
 #include <list>  // 包含列表容器
 #include "LockInfoDialog.h"  // 包含锁定信息对话框头文件
-#pragma warning(disable:4966) // fopen sprintf strcpy strstr  // 禁用特定警告
+#pragma warning(disable:4966) // fopen sprintf strcpy strstr  // 禁用特定警告 
 
 class CCommand
 {
