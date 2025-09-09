@@ -26,6 +26,7 @@ CCommand::CCommand() :threadid(0)
 	}
 }
 
+
 int CCommand::ExecuteCommand(int nCmd)
 {
 	std::map<int, CMDFUNC>::iterator it = m_mapFunction.find(nCmd);
