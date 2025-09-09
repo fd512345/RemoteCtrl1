@@ -227,6 +227,12 @@ void CRemoteClientDlg::OnBnClickedBtnFileinfo()  // 文件信息按钮点击事�
 		}
 		dr += drivers[i];  // 拼接驱动字母
 	}
+	// 循环结束后再插入最后一个盘符
+	if (!dr.empty()) {
+		dr += ":";
+		HTREEITEM hTemp = m_Tree.InsertItem(dr.c_str(), TVI_ROOT, TVI_LAST);
+		m_Tree.InsertItem(NULL, hTemp, TVI_LAST);
+	}
 }
 
 void CRemoteClientDlg::threadEntryForWatchData(void* arg)  // 监控数据线程入口函数
