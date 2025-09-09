@@ -29,7 +29,7 @@ int main()  // 主函数
 	{
 		// 初始化 MFC 并在失败时显示错误    
 		if (!AfxWinInit(hModule, nullptr, ::GetCommandLine(), 0))  // 初始化MFC失败
-		{
+		{ 
 			// TODO: 在此处为应用程序的行为编写代码。
 			wprintf(L"错误: MFC 初始化失败\n");  // 输出错误信息
 			nRetCode = 1;  // 设置返回代码为错误
