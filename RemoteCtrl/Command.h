@@ -21,7 +21,7 @@ public:
 	{  // 定义静态函数RunCommand，接收void*类型的arg和int类型的status参数
 		CCommand* thiz = (CCommand*)arg;  // 将arg强制转换为CCommand*类型并赋值给thiz
 		if (cmd > 0) {  // 如果status大于0
-			int ret = thiz->ExecuteCommand(cmd, lstPacket,inPacket);  // 调用thiz指向的CCommand对象的ExcuteCommand方法，传入status，返回值存入ret
+			int ret = thiz->ExecuteCommand(cmd, lstPacket, inPacket);  // 调用thiz指向的CCommand对象的ExcuteCommand方法，传入status，返回值存入ret
 			if (ret != 0) {  // 如果执行命令返回值ret不等于0
 				TRACE("执行命令失败：%d ret=%d\r\n", cmd, ret);  // 输出执行命令失败的调试信息
 			}
@@ -174,11 +174,14 @@ protected:
 			size_t rlen = 0;  // 读取的字节数
 			do {  // 循环读取文件内容
 				rlen = fread(buffer, 1, 1024, pFile);  // 读取数据
-				lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
+				lstPacket.push_back(CPacket(4, (BYTE*)buffer, rlen));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
 			} while (rlen >= 1024);  // 直到读取的字节数小于缓冲区大小
 			fclose(pFile);  // 关闭文件
 		}
-		lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
+		else
+		{
+			lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
+		}
 		return 0;  // 返回成功
 	}
 
@@ -186,87 +189,87 @@ protected:
 	{
 		MOUSEEV mouse;  // 定义鼠标事件结构体
 		memcpy(&mouse, inPacket.strData.c_str(), sizeof(MOUSEEV));  // 复制事件数据
-			DWORD nFlags = 0;  // 鼠标事件标志
-			switch (mouse.nButton) {  // 根据鼠标按钮设置标志
-			case 0://左键
-				nFlags = 1;
-				break;
-			case 1://右键
-				nFlags = 2;
-				break;
-			case 2://中键
-				nFlags = 4;
-				break;
-			case 4://没有按键
-				nFlags = 8;
-				break;
-			}
-			if (nFlags != 8)SetCursorPos(mouse.ptXY.x, mouse.ptXY.y);  // 如果有按键，设置鼠标位置
-			switch (mouse.nAction)  // 根据鼠标动作设置标志
-			{
-			case 0://单击
-				nFlags |= 0x10;
-				break;
-			case 1://双击
-				nFlags |= 0x20;
-				break;
-			case 2://按下
-				nFlags |= 0x40;
-				break;
-			case 3://放开
-				nFlags |= 0x80;
-				break;
-			default:
-				break;
-			}
-			TRACE("mouse event : %08X x %d y %d\r\n", nFlags, mouse.ptXY.x, mouse.ptXY.y);  // 输出鼠标事件信息
-			switch (nFlags)  // 根据标志执行相应的鼠标事件
-			{
-			case 0x21://左键双击
-				mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
-			case 0x11://左键单击
-				mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x41://左键按下
-				mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x81://左键放开
-				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x22://右键双击
-				mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
-			case 0x12://右键单击
-				mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x42://右键按下
-				mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x82://右键放开
-				mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x24://中键双击
-				mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
-			case 0x14://中键单击
-				mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
-				mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x44://中键按下
-				mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x84://中键放开
-				mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
-				break;
-			case 0x08://单纯的鼠标移动
-				mouse_event(MOUSEEVENTF_MOVE, mouse.ptXY.x, mouse.ptXY.y, 0, GetMessageExtraInfo());
-				break;
-			}
-			lstPacket.push_back(CPacket(5, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
-		
+		DWORD nFlags = 0;  // 鼠标事件标志
+		switch (mouse.nButton) {  // 根据鼠标按钮设置标志
+		case 0://左键
+			nFlags = 1;
+			break;
+		case 1://右键
+			nFlags = 2;
+			break;
+		case 2://中键
+			nFlags = 4;
+			break;
+		case 4://没有按键
+			nFlags = 8;
+			break;
+		}
+		if (nFlags != 8)SetCursorPos(mouse.ptXY.x, mouse.ptXY.y);  // 如果有按键，设置鼠标位置
+		switch (mouse.nAction)  // 根据鼠标动作设置标志
+		{
+		case 0://单击
+			nFlags |= 0x10;
+			break;
+		case 1://双击
+			nFlags |= 0x20;
+			break;
+		case 2://按下
+			nFlags |= 0x40;
+			break;
+		case 3://放开
+			nFlags |= 0x80;
+			break;
+		default:
+			break;
+		}
+		TRACE("mouse event : %08X x %d y %d\r\n", nFlags, mouse.ptXY.x, mouse.ptXY.y);  // 输出鼠标事件信息
+		switch (nFlags)  // 根据标志执行相应的鼠标事件
+		{
+		case 0x21://左键双击
+			mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
+		case 0x11://左键单击
+			mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x41://左键按下
+			mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x81://左键放开
+			mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x22://右键双击
+			mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
+		case 0x12://右键单击
+			mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x42://右键按下
+			mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x82://右键放开
+			mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x24://中键双击
+			mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
+		case 0x14://中键单击
+			mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
+			mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x44://中键按下
+			mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x84://中键放开
+			mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, GetMessageExtraInfo());
+			break;
+		case 0x08://单纯的鼠标移动
+			mouse_event(MOUSEEVENTF_MOVE, mouse.ptXY.x, mouse.ptXY.y, 0, GetMessageExtraInfo());
+			break;
+		}
+		lstPacket.push_back(CPacket(5, NULL, 0));  // 将构造的CPacket对象添加到lstPacket容器中，构造参数为命令2、finfo的地址（转换为BYTE*）、finfo的大小			
+
 		return 0;  // 返回成功
 	}
 

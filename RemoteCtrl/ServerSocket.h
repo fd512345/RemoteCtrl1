@@ -123,26 +123,6 @@ protected:
 		//Dump((BYTE*)pack.Data(), pack.Size());  // 调试时打印数据包
 		return send(m_client, pack.Data(), pack.Size(), 0) > 0;  // 发送数据包
 	}
-	// 获取文件路径（从数据包中）
-	bool GetFilePath(std::string& strPath) {
-		// 命令2-4（文件操作）或9（删除文件）包含文件路径
-		if (((m_packet.sCmd >= 2) && (m_packet.sCmd <= 4)) || (m_packet.sCmd == 9)) {
-			strPath = m_packet.strData;  // 提取路径
-			return true;
-		}
-		return false;  // 不包含路径
-	}
-	// 获取鼠标事件（从数据包中）
-	bool GetMouseEvent(MOUSEEV& mouse) {
-		if (m_packet.sCmd == 5) {  // 命令5为鼠标事件
-			memcpy(&mouse, m_packet.strData.c_str(), sizeof(MOUSEEV));  // 复制事件数据
-			return true;
-		}
-		return false;  // 不是鼠标事件命令
-	}
-	CPacket& GetPacket() {  // 获取当前解析的数据包
-		return m_packet;
-	}
 	void CloseClient() {  // 关闭客户端连接
 		if (m_client != INVALID_SOCKET)
 		{
