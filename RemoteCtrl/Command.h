@@ -17,13 +17,13 @@ public:
 	CCommand();
 	~CCommand() {}
 	int ExecuteCommand(int nCmd, std::list<CPacket>& lstPacket, CPacket& inPacket);
-	static void RunCommand(void* arg, int status, std::list<CPacket>& lstPacket, CPacket& inPacket)
+	static void RunCommand(void* arg, int cmd, std::list<CPacket>& lstPacket, CPacket& inPacket)
 	{  // 定义静态函数RunCommand，接收void*类型的arg和int类型的status参数
 		CCommand* thiz = (CCommand*)arg;  // 将arg强制转换为CCommand*类型并赋值给thiz
-		if (status > 0) {  // 如果status大于0
-			int ret = thiz->ExecuteCommand(status, lstPacket,inPacket);  // 调用thiz指向的CCommand对象的ExcuteCommand方法，传入status，返回值存入ret
+		if (cmd > 0) {  // 如果status大于0
+			int ret = thiz->ExecuteCommand(cmd, lstPacket,inPacket);  // 调用thiz指向的CCommand对象的ExcuteCommand方法，传入status，返回值存入ret
 			if (ret != 0) {  // 如果执行命令返回值ret不等于0
-				TRACE("执行命令失败：%d ret=%d\r\n", status, ret);  // 输出执行命令失败的调试信息
+				TRACE("执行命令失败：%d ret=%d\r\n", cmd, ret);  // 输出执行命令失败的调试信息
 			}
 		}
 		else {  // 如果status小于等于0
