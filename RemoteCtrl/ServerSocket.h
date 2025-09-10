@@ -18,7 +18,7 @@ public:
 		}
 		return m_instance;
 	}
-	// 初始化Socket（绑定端口并监听）
+	// 负责初始化服务器套接字、绑定端口并进入循环，持续接收客户端连接、处理命令并发送响应
 	int Run(SOCKET_CALLBACK callback, void* arg, short port = 9527) {
 		//1 进度的可控性 2 对接的方便性 3 可行性评估，提早暴露风险
 		// TODO: socket、bind、listen、accept、read、write、close
