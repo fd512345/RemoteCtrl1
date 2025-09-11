@@ -162,7 +162,7 @@ void CWatchDialog::OnRButtonDblClk(UINT nFlags, CPoint point)
 	}
 	CDialog::OnRButtonDblClk(nFlags, point);
 }
-
+ 
 
 void CWatchDialog::OnRButtonDown(UINT nFlags, CPoint point)
 {
