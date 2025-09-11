@@ -57,7 +57,7 @@ unsigned __stdcall CClientController::threadEntry(void* arg)
 	thiz->threadFunc();  // 调用thiz指向的CClientController对象的threadFunc方法
 	_endthreadex(0);  // 结束当前线程，参数0表示线程退出码
 	return 0;  // 这里的return 0实际可能因_endthreadex的调用而不会执行到，主要是为了符合函数返回值要求等情况
-	return 0;
+	return 0;  
 }
 LRESULT CClientController::OnSendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
