@@ -67,7 +67,7 @@ void CRemoteClientDlg::DoDataExchange(CDataExchange* pDX)  // 数据交换函数
 	DDX_Control(pDX, IDC_TREE_DIR, m_Tree);  // 绑定目录树控件
 	DDX_Control(pDX, IDC_LIST_FILE, m_List);  // 绑定文件列表控件
 }
-
+//用于初始化网络连接，将指定命令及数据封装成数据包发送给服务端，并处理服务端返回的响应，根据参数决定是否自动关闭连接
 int CRemoteClientDlg::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength)  // 发送命令数据包函数
 {
 	UpdateData();  // 从控件更新数据到变量

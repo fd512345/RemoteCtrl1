@@ -452,6 +452,7 @@ int main()  // 主函数
 					count++;  // 增加失败计数
 				}
 				TRACE("AcceptClient return true\r\n");  // 输出连接成功信息
+				//接收并解析客户端消息,返回命令号
 				int ret = pserver->DealCommand();  // 处理命令
 				TRACE("DealCommand ret %d\r\n", ret);  // 输出处理结果
 				if (ret > 0) {  // 命令有效
