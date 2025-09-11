@@ -1,6 +1,7 @@
 #pragma once
 #include "ClientSocket.h"
 #include "CWatchDialog.h"
+#include "resource.h"
 #include "RemoteClientDlg.h"
 #include "StatusDlg.h"
 #include <map>
@@ -23,9 +24,14 @@ public:
 	//发送消息
 	LRESULT SendMessage(MSG msg);  // 声明SendMessage函数，用于发送消息，接收消息标识、wParam和lParam参数，返回LRESULT类型结果
 protected:
-	CClientController() {  // CClientController类的构造函数
-
+	CClientController() :  // CClientController类的构造函数，使用初始化列表
+		m_statusDlg(&m_remoteDlg),  // 初始化m_statusDlg，传入m_remoteDlg的地址
+		m_watchDlg(&m_remoteDlg)  // 初始化m_watchDlg，传入m_remoteDlg的地址
+	{
+		m_hThread = INVALID_HANDLE_VALUE;  // 将m_hThread设为无效句柄值
+		m_nThreadID = -1;  // 将m_nThreadID设为-1
 	}
+
 	~CClientController() {  // CClientController类的析构函数
 		WaitForSingleObject(m_hThread, 100);  // 等待线程m_hThread结束，超时时间100毫秒
 	}
@@ -43,9 +49,27 @@ protected:
 	LRESULT OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示状态消息的函数
 	LRESULT OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示监控消息的函数
 private:
+	typedef struct MsgInfo {  // 定义结构体类型MsgInfo
+		MSG msg;  // 定义MSG类型的成员msg
+		LRESULT result;  // 定义LRESULT类型的成员result
+		MsgInfo(MSG m) {  // 带MSG参数的构造函数
+			result = 0;  // 将result初始化为0
+			memcpy(&msg, &m, sizeof(MSG));  // 把m的内容复制到msg
+		}
+		MsgInfo(const MsgInfo& m) {  // 拷贝构造函数
+			result = m.result;  // 复制result的值
+			memcpy(&msg, &m.msg, sizeof(MSG));  // 复制msg的内容
+		}
+		MsgInfo& operator=(const MsgInfo& m) {  // 重载赋值运算符
+			if (this != &m) {  // 防止自赋值
+				result = m.result;  // 复制result的值
+				memcpy(&msg, &m.msg, sizeof(MSG));  // 复制msg的内容
+			}
+			return *this;  // 返回当前对象的引用，支持链式赋值
+		}
+	} MSGINFO;  // 定义结构体别名MSGINFO
 	typedef LRESULT(CClientController::* MSGFUNC)(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 定义指向CClientController类成员函数的指针类型MSGFUNC，该成员函数接收UINT、WPARAM、LPARAM类型参数，返回LRESULT
 	static std::map<UINT, MSGFUNC> m_mapFunc;  // 定义静态的std::map，键为UINT类型，值为MSGFUNC类型，用于存储消息与对应处理函数的映射关系
-	std::map<UUID, MSG> m_mapMessage;  // 定义std::map，键为UUID类型，值为MSG类型，用于存储消息队列
 	CWatchDialog m_watchDlg;  // 定义 CWatchDialog 类型的变量 m_watchDlg
 	CRemoteClientDlg m_remoteDlg;  // 定义 CRemoteClientDlg 类型的变量 m_remoteDlg
 	CStatusDlg m_statusDlg;  // 定义 CStatusDlg 类型的变量 m_statusDlg
