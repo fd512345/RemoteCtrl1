@@ -5,7 +5,7 @@
 #include "pch.h"
 #include "framework.h"
 #include "RemoteClient.h"
-#include "RemoteClientDlg.h"
+#include "ClientController.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -57,7 +57,7 @@ BOOL CRemoteClientApp::InitInstance()
 
 	// 创建 shell 管理器，以防对话框包含
 	// 任何 shell 树视图控件或 shell 列表视图控件。
-	CShellManager *pShellManager = new CShellManager;
+	CShellManager* pShellManager = new CShellManager;
 
 	// 激活“Windows Native”视觉管理器，以便在 MFC 控件中启用主题
 	CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows));
@@ -70,10 +70,12 @@ BOOL CRemoteClientApp::InitInstance()
 	// TODO: 应适当修改该字符串，
 	// 例如修改为公司或组织名
 	SetRegistryKey(_T("应用程序向导生成的本地应用程序"));
+	CClientController::getInstance()->InitController();  // 获取CClientController单例对象并调用其InitController方法进行初始化
+	INT_PTR nResponse = CClientController::getInstance()->Invoke(m_pMainWnd);  // 调用CClientController单例对象的Invoke方法，传入m_pMainWnd参数，返回值存入nResponse
 
-	CRemoteClientDlg dlg;
-	m_pMainWnd = &dlg;
-	INT_PTR nResponse = dlg.DoModal();
+	//CRemoteClientDlg dlg;
+	//m_pMainWnd = &dlg;
+	//INT_PTR nResponse = dlg.DoModal();
 	if (nResponse == IDOK)
 	{
 		// TODO: 在此放置处理何时用
