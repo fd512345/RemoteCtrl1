@@ -7,7 +7,7 @@
 #include "ServerSocket.h"  // 包含服务器套接字相关头文件
 #ifdef _DEBUG
 #define new DEBUG_NEW  // 调试模式下使用DEBUG_NEW宏
-#endif
+#endif 
 //#pragma comment( linker, "/subsystem:windows /entry:WinMainCRTStartup" )  // 注释：设置子系统为windows及入口函数
 //#pragma comment( linker, "/subsystem:windows /entry:mainCRTStartup" )  // 注释：设置子系统为windows及入口函数
 //#pragma comment( linker, "/subsystem:console /entry:mainCRTStartup" )  // 注释：设置子系统为console及入口函数
