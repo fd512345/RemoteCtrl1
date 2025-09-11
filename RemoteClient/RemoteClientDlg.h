@@ -37,10 +37,6 @@ private:
 	bool m_isFull;//缓存是否有数据 true表示有缓存数据 false表示没有缓存数据
 	bool m_isClosed;//监视是否关闭
 private:
-	static void threadEntryForWatchData(void* arg);//静态函数不能使用this指针
-	void threadWatchData();//成员函数可以使用this指针
-	static void threadEntryForDownFile(void* arg);
-	void threadDownFile();
 	void LoadFileCurrent();
 	void LoadFileInfo();
 	CString GetPath(HTREEITEM hTree);

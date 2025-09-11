@@ -223,95 +223,6 @@ void CRemoteClientDlg::OnBnClickedBtnFileinfo()  // 文件信息按钮点击事�
 	}
 }
 
-void CRemoteClientDlg::threadEntryForWatchData(void* arg)  // 监控数据线程入口函数
-{
-	CRemoteClientDlg* thiz = (CRemoteClientDlg*)arg;  // 转换为当前对话框指针
-	thiz->threadWatchData();  // 调用监控数据函数
-	_endthread();  // 结束线程
-}
-
-void CRemoteClientDlg::threadWatchData()  // 监控数据线程函数
-{//可能存在异步问题，导致程序崩溃
-	Sleep(50);  // 休眠50毫秒
-	CClientController* pCtrl = CClientController::getInstance();  // 获取客户端控制器实例
-	while (!m_isClosed) {//等价于while(true)  // 循环直到关闭标志为真
-		if (m_isFull == false) {//更新数据到缓存  // 如果缓存未满
-			int ret = pCtrl->SendCommandPacket(6);  // 发送获取屏幕数据命令
-			if (ret == 6) {  // 成功获取数据
-				if (pCtrl->GetImage(m_image) == 0) {  // 调用pCtrl的GetImage方法，若返回值为0
-					m_isFull = true;  // 将m_isFull设为true
-				}
-				else {  // 与前面的条件判断（如if (pCtrl->GetImage(m_image) == 0)）配对的else分支
-					TRACE("获取图片失败！\r\n");  // 输出调试信息“获取图片失败！”
-				}
-			}
-			else {  // 获取数据失败
-				Sleep(1);  // 休眠1毫秒
-			}
-		}
-		else Sleep(1);  // 缓存已满，休眠1毫秒
-	}
-}
-
-void CRemoteClientDlg::threadEntryForDownFile(void* arg)  // 下载文件线程入口函数
-{
-	CRemoteClientDlg* thiz = (CRemoteClientDlg*)arg;  // 转换为当前对话框指针
-	thiz->threadDownFile();  // 调用下载文件函数
-	_endthread();  // 结束线程
-}
-
-void CRemoteClientDlg::threadDownFile()  // 下载文件线程函数
-{
-	int nListSelected = m_List.GetSelectionMark();  // 获取文件列表选中项
-	CString strFile = m_List.GetItemText(nListSelected, 0);  // 获取选中文件名
-	CFileDialog dlg(FALSE, NULL,  // 创建文件保存对话框
-		strFile, OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
-		NULL, this);
-	if (dlg.DoModal() == IDOK) {  // 如果用户确认保存
-		FILE* pFile = fopen(dlg.GetPathName(), "wb+");  // 打开本地文件
-		if (pFile == NULL) {  // 文件打开失败
-			AfxMessageBox(_T("本地没有权限保存该文件，或者文件无法创建！！！"));  // 显示错误消息
-			m_dlgStatus.ShowWindow(SW_HIDE);  // 隐藏状态对话框
-			EndWaitCursor();  // 结束等待光标
-			return;  // 返回
-		}
-		HTREEITEM hSelected = m_Tree.GetSelectedItem();  // 获取目录树选中项
-		strFile = GetPath(hSelected) + strFile;  // 拼接完整文件路径
-		TRACE("%s\r\n", LPCSTR(strFile));  // 输出文件路径
-		CClientSocket* pClient = CClientSocket::getInstance();  // 获取客户端套接字实例
-		do {
-			// 调用CClientController单例对象的SendCommandPacket方法，发送命令（命令码为4）、指定不自动关闭（false）、将strFile转换为BYTE*类型的文件数据、文件数据长度为strFile的长度，将方法返回值赋给ret
-			int ret = CClientController::getInstance()->SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());
-			if (ret < 0) {  // 命令执行失败
-				AfxMessageBox("执行下载命令失败！！");  // 显示错误消息
-				TRACE("执行下载失败：ret = %d\r\n", ret);  // 输出错误信息
-				break;  // 跳出循环
-			}
-			long long nLength = *(long long*)pClient->GetPacket().strData.c_str();  // 获取文件长度
-			if (nLength == 0) {  // 文件长度为零
-				AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 显示错误消息
-				break;  // 跳出循环
-			}
-			long long nCount = 0;
-			while (nCount < nLength) {  // 循环接收文件数据
-				ret = pClient->DealCommand();  // 处理命令响应
-				if (ret < 0) {  // 传输失败
-					AfxMessageBox("传输失败！！");  // 显示错误消息
-					TRACE("传输失败：ret = %d\r\n", ret);  // 输出错误信息
-					break;  // 跳出循环
-				}
-				fwrite(pClient->GetPacket().strData.c_str(), 1, pClient->GetPacket().strData.size(), pFile);  // 写入文件数据
-				nCount += pClient->GetPacket().strData.size();  // 更新已接收数据长度
-			}
-		} while (false);
-		fclose(pFile);  // 关闭文件
-		pClient->CloseSocket();  // 关闭套接字
-	}
-	m_dlgStatus.ShowWindow(SW_HIDE);  // 隐藏状态对话框
-	EndWaitCursor();  // 结束等待光标
-	MessageBox(_T("下载完成！！"), _T("完成"));  // 显示下载完成消息
-}
-
 void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 {
 	HTREEITEM hTree = m_Tree.GetSelectedItem();  // 获取目录树选中项
@@ -506,12 +417,7 @@ LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)  // 自定�
 
 void CRemoteClientDlg::OnBnClickedBtnStartWatch()  // 开始监控按钮点击事件处理函数
 {
-	m_isClosed = false;  // 重置关闭标志
-	CWatchDialog dlg(this);  // 创建监控对话框
-	HANDLE hThread = (HANDLE)_beginthread(CRemoteClientDlg::threadEntryForWatchData, 0, this);  // 启动监控线程
-	dlg.DoModal();  // 显示模态监控对话框
-	m_isClosed = true;  // 设置关闭标志
-	WaitForSingleObject(hThread, 500);  // 等待线程结束
+	CClientController::getInstance()->StartWatchScreen();  // 启动屏幕监控  
 }
 
 

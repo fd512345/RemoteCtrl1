@@ -28,17 +28,21 @@ public:
 	void UpdateAddress(int nIP, int nPort) {  // 更新地址的函数，参数为IP和端口
 		CClientSocket::getInstance()->UpdateAddress(nIP, nPort);  // 获取CClientSocket单例对象并调用其UpdateAddress方法
 	}
+
 	int DealCommand() {  // 处理命令的函数
 		return CClientSocket::getInstance()->DealCommand();  // 获取CClientSocket单例对象并调用其DealCommand方法，返回结果
 	}
+
 	void CloseSocket() {  // 关闭套接字的函数
 		CClientSocket::getInstance()->CloseSocket();  // 获取CClientSocket单例对象并调用其CloseSocket方法
 	}
+
 	bool SendPacket(const CPacket& pack) {  // 发送数据包的函数，参数为CPacket常量引用
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket单例对象指针pClient
 		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
 		pClient->Send(pack);  // 调用pClient的Send方法发送pack
 	}
+
 	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0) {
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
@@ -49,10 +53,12 @@ public:
 			CloseSocket();  // 调用CloseSocket方法关闭套接字
 		return cmd;  // 返回cmd
 	}
+
 	int GetImage(CImage& image) {  // 获取图像的函数，参数为CImage引用
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 		return CEdoyunTool::Bytes2Image(image, pClient->GetPacket().strData);  // 调用CEdoYunTool的Bytes2Image方法，将pClient获取的数据包中的strData转换为图像image并返回结果
 	}
+
 	int DownFile(CString strPath) {
 		CFileDialog dlg(
 			FALSE, NULL,
@@ -71,19 +77,26 @@ public:
 			m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
 			m_statusDlg.CenterWindow(&m_remoteDlg);  // 将状态对话框在m_remoteDlg中心显示
 			m_statusDlg.SetActiveWindow();  // 将状态对话框设为活动窗口
+	
 		}
 		return 0;  // 返回成功标识
 	}
-protected:
+
+	void StartWatchScreen();  // 声明StartWatchScreen函数，用于启动屏幕监视
+protected:	
+	void threadWatchScreen();  // 声明普通函数threadWatchScreen，用于实现屏幕监视相关逻辑
+	static void threadWatchScreen(void* arg);  // 声明静态函数threadWatchScreen（作为线程入口等场景使用），参数为void*类型的arg 
 	void threadDownloadFile();  // 声明线程函数threadDownloadFile，用于执行文件下载逻辑
 	static void threadDownloadEntry(void* arg);  // 声明静态线程入口函数threadDownloadEntry，符合__stdcall调用约定，参数为void*类型的arg
 	CClientController() :  // CClientController类的构造函数，使用初始化列表
 		m_statusDlg(&m_remoteDlg),  // 初始化m_statusDlg，传入m_remoteDlg的地址
 		m_watchDlg(&m_remoteDlg)  // 初始化m_watchDlg，传入m_remoteDlg的地址
 	{
+		m_hThreadWatch = INVALID_HANDLE_VALUE;  // 将m_hThreadWatch设为无效句柄值
 		m_hThreadDownload = INVALID_HANDLE_VALUE;  // 将m_hThreadDownload设为无效句柄值
 		m_hThread = INVALID_HANDLE_VALUE;  // 将m_hThread设为无效句柄值
 		m_nThreadID = -1;  // 将m_nThreadID设为-1
+		m_isClosed = true;
 	}
 
 	~CClientController() {  // CClientController类的析构函数
@@ -102,6 +115,7 @@ protected:
 	LRESULT OnSendData(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理发送数据消息的函数
 	LRESULT OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示状态消息的函数
 	LRESULT OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示监控消息的函数
+
 private:
 	typedef struct MsgInfo {  // 定义结构体类型MsgInfo
 		MSG msg;  // 定义MSG类型的成员msg
@@ -122,6 +136,7 @@ private:
 			return *this;  // 返回当前对象的引用，支持链式赋值
 		}
 	} MSGINFO;  // 定义结构体别名MSGINFO
+
 	typedef LRESULT(CClientController::* MSGFUNC)(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 定义指向CClientController类成员函数的指针类型MSGFUNC，该成员函数接收UINT、WPARAM、LPARAM类型参数，返回LRESULT
 	static std::map<UINT, MSGFUNC> m_mapFunc;  // 定义静态的std::map，键为UINT类型，值为MSGFUNC类型，用于存储消息与对应处理函数的映射关系
 	CWatchDialog m_watchDlg;  // 定义 CWatchDialog 类型的变量 m_watchDlg
@@ -129,12 +144,16 @@ private:
 	CStatusDlg m_statusDlg;  // 定义 CStatusDlg 类型的变量 m_statusDlg
 	HANDLE m_hThread;  // 定义 HANDLE 类型的变量 m_hThread，用于线程句柄
 	HANDLE m_hThreadDownload;  // 定义 HANDLE 类型的变量 m_hThreadDownload，用于下载线程句柄
+	HANDLE m_hThreadWatch;  // 定义 HANDLE 类型的变量 m_hThreadWatch，用于线程句柄
+	bool m_isClosed;  // 定义 bool 类型的变量 m_isClosed，用于标识是否关闭
+
 	//下载文件的远程路径
 	CString m_strRemote;
 	//下载文件的本地保存路径
 	CString m_strLocal;
 	unsigned m_nThreadID;  // 定义 DWORD 类型的变量 m_nThreadID，用于线程 ID
 	static CClientController* m_instance;
+
 	class CHelper {                           // 辅助类，用于自动释放单例
 	public:
 		CHelper() {
