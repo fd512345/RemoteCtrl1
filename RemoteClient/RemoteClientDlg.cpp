@@ -234,7 +234,7 @@ void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 		TRACE("[%s] isdir %d\r\n", pInfo->szFileName, pInfo->IsDirectory);  // 输出文件信息
 		if (!pInfo->IsDirectory) {  // 如果是文件
 			m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
-		}
+		} 
 		int cmd = CClientController::getInstance()->DealCommand();  // 处理命令响应
 		TRACE("ack:%d\r\n", cmd);  // 输出响应命令
 		if (cmd < 0)break;  // 响应错误则跳出循环
