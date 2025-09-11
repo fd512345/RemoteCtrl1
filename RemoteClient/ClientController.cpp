@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "ClientSocket.h"
 #include "ClientController.h"
 
 std::map<UINT, CClientController::MSGFUNC>  // 定义一个std::map类型，键为UINT，值为CClientController类的MSGFUNC类型
@@ -60,12 +61,15 @@ unsigned __stdcall CClientController::threadEntry(void* arg)
 }
 LRESULT CClientController::OnSendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
-
-	return LRESULT();
+	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
+	CPacket* pPacket = (CPacket*)wParam;  // 将wParam转换为CPacket*类型的pPacket
+	return pClient->Send(*pPacket);  // 调用pClient的Send方法，传入*pPacket，并返回该方法的返回值
 }
 LRESULT CClientController::OnSendData(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
-	return LRESULT();
+	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
+	char* pBuffer = (char*)wParam;  // 将wParam转换为char*类型的pBuffer，用于接收数据缓冲区指针
+	return pClient->Send(pBuffer, (int)lParam);  // 调用pClient的Send方法，发送pBuffer指向的缓冲区数据，数据长度为(int)lParam，并返回该方法的返回值
 }
 LRESULT CClientController::OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -74,6 +78,12 @@ LRESULT CClientController::OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam)
 LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
 	return m_watchDlg.DoModal();
+}
+void CClientController::threadDownloadEntry(void* arg)
+{
+	CClientController* thiz = (CClientController*)arg;  // 将传入的void*类型参数arg转换为CClientController*类型指针thiz
+	thiz->threadDownloadFile();  // 调用thiz指向的CClientController对象的threadDownloadFile方法
+	_endthread();  // 结束当前线程
 }
 void CClientController::threadFunc() {
 	MSG msg;

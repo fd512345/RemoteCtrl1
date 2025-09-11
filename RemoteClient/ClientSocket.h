@@ -85,7 +85,7 @@ public:
 	int Size() {                              // 返回数据包总大小（包头+长度+命令+数据+校验和）
 		return nLength + 6;                   // nLength包含命令+数据+校验和，加上包头2字节共+6
 	}
-	const char* Data() {                      // 生成用于发送的二进制数据流
+	const char* Data(std::string& strOut) const{                      // 生成用于发送的二进制数据流
 		strOut.resize(nLength + 6);           // 调整输出缓冲区大小
 		BYTE* pData = (BYTE*)strOut.c_str();
 		*(WORD*)pData = sHead; pData += 2;    // 写入包头（2字节）
@@ -102,7 +102,7 @@ public:
 	WORD sCmd;                                // 命令号（2字节）
 	std::string strData;                      // 数据内容（可变长度）
 	WORD sSum;                                // 校验和（数据部分的字节和，2字节）
-	std::string strOut;                       // 用于存储序列化后的输出数据
+	//std::string strOut;                       // 用于存储序列化后的输出数据
 };
 #pragma pack(pop)                            // 恢复之前的内存对齐方式
 
@@ -142,16 +142,16 @@ public:
 		}
 		return m_instance;
 	}
-	bool InitSocket(int nIP, int nPort) {     // 初始化Socket并连接服务器
+	bool InitSocket() {     // 初始化Socket并连接服务器
 		if (m_sock != INVALID_SOCKET)CloseSocket();  // 关闭已有连接
 		m_sock = socket(PF_INET, SOCK_STREAM, 0);  // 创建TCP Socket
 		if (m_sock == -1)return false;        // 创建失败返回false
 		sockaddr_in serv_adr;                 // 服务器地址结构体
 		memset(&serv_adr, 0, sizeof(serv_adr));
 		serv_adr.sin_family = AF_INET;        // IPv4协议
-		TRACE("addr %08X nIP %08X\r\n", inet_addr("127.0.0.1"), nIP);  // 调试输出IP
-		serv_adr.sin_addr.s_addr = htonl(nIP);  // 设置服务器IP（主机字节序转网络字节序）
-		serv_adr.sin_port = htons(nPort);     // 设置服务器端口（主机字节序转网络字节序）
+		TRACE("addr %08X nIP %08X\r\n", inet_addr("127.0.0.1"), m_nIP);  // 调试输出IP
+		serv_adr.sin_addr.s_addr = htonl(m_nIP);  // 设置服务器IP（主机字节序转网络字节序）
+		serv_adr.sin_port = htons(m_nPort);     // 设置服务器端口（主机字节序转网络字节序）
 		if (serv_adr.sin_addr.s_addr == INADDR_NONE) {  // IP地址无效
 			AfxMessageBox("指定的IP地址不存在！");
 			return false;
@@ -193,10 +193,12 @@ public:
 		if (m_sock == -1)return false;        // Socket无效返回false
 		return send(m_sock, pData, nSize, 0) > 0;  // 发送数据，返回是否成功
 	}
-	bool Send(CPacket& pack) {                // 发送数据包
+	bool Send(const CPacket& pack) {                // 发送数据包
 		TRACE("m_sock = %d\r\n", m_sock);     // 调试输出Socket句柄
 		if (m_sock == -1)return false;        // Socket无效返回false
-		return send(m_sock, pack.Data(), pack.Size(), 0) > 0;  // 发送序列化后的数据包
+		std::string strOut;			  // 用于存储序列化后的数据
+		pack.Data(strOut);                  // 序列化数据包
+		return send(m_sock, strOut.c_str(), strOut.size(), 0) > 0;  // 发送序列化后的数据包
 	}
 	bool GetFilePath(std::string& strPath) {  // 获取数据包中的文件路径（针对特定命令）
 		if ((m_packet.sCmd >= 2) && (m_packet.sCmd <= 4)) {  // 命令2-4包含文件路径
@@ -219,15 +221,23 @@ public:
 		closesocket(m_sock);
 		m_sock = INVALID_SOCKET;              // 标记为无效
 	}
+	void UpdateAddress(int nIP, int nPort) {  // 更新地址的函数，参数为IP和端口
+		m_nIP = nIP;  // 将传入的nIP赋值给成员变量m_nIP
+		m_nPort = nPort;  // 将传入的nPort赋值给成员变量m_nPort
+	}
 private:
+	int m_nIP;
+	int m_nPort;
 	std::vector<char> m_buffer;               // 接收缓冲区（向量容器）
 	SOCKET m_sock;                            // Socket句柄
 	CPacket m_packet;                         // 当前处理的数据包
 	CClientSocket& operator=(const CClientSocket& ss) {}  // 禁用赋值运算符
 	CClientSocket(const CClientSocket& ss) {  // 禁用拷贝构造函数
 		m_sock = ss.m_sock;
+		m_nIP = ss.m_nIP;
+		m_nPort = ss.m_nPort;
 	}
-	CClientSocket() {                         // 私有构造函数（单例模式）
+	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0) {                         // 私有构造函数（单例模式）
 		if (InitSockEnv() == FALSE) {         // 初始化Socket环境
 			MessageBox(NULL, _T("无法初始化网络环境，程序即将退出！"), _T("初始化错误"), MB_OK | MB_ICONERROR);
 			exit(0);

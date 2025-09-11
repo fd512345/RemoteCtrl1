@@ -86,4 +86,6 @@ public:
 	afx_msg void OnBnClickedBtnStartWatch();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnEnChangeEditPort();
+	afx_msg void OnIpnFieldchangedIpaddressServ(NMHDR* pNMHDR, LRESULT* pResult);
+
 };

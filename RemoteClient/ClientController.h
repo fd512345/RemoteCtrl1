@@ -5,6 +5,7 @@
 #include "RemoteClientDlg.h"
 #include "StatusDlg.h"
 #include <map>
+#include "EdoyunTool.h"
 
 #define WM_SEND_PACK (WM_USER+1)  // 发送包数据
 #define WM_SEND_DATA (WM_USER+2)  // 发送数据
@@ -23,11 +24,64 @@ public:
 	int Invoke(CWnd*& m_pMainWnd);
 	//发送消息
 	LRESULT SendMessage(MSG msg);  // 声明SendMessage函数，用于发送消息，接收消息标识、wParam和lParam参数，返回LRESULT类型结果
+	//更新网络服务器地址
+	void UpdateAddress(int nIP, int nPort) {  // 更新地址的函数，参数为IP和端口
+		CClientSocket::getInstance()->UpdateAddress(nIP, nPort);  // 获取CClientSocket单例对象并调用其UpdateAddress方法
+	}
+	int DealCommand() {  // 处理命令的函数
+		return CClientSocket::getInstance()->DealCommand();  // 获取CClientSocket单例对象并调用其DealCommand方法，返回结果
+	}
+	void CloseSocket() {  // 关闭套接字的函数
+		CClientSocket::getInstance()->CloseSocket();  // 获取CClientSocket单例对象并调用其CloseSocket方法
+	}
+	bool SendPacket(const CPacket& pack) {  // 发送数据包的函数，参数为CPacket常量引用
+		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket单例对象指针pClient
+		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
+		pClient->Send(pack);  // 调用pClient的Send方法发送pack
+	}
+	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0) {
+		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
+		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
+		pClient->Send(CPacket(nCmd, pData, nLength));  // 调用pClient的Send方法，发送构造的CPacket对象
+		int cmd = DealCommand();  // 调用DealCommand方法处理命令，获取返回值cmd
+		TRACE("ack:%d\r\n", cmd);  // 输出调试信息，显示ack值为cmd
+		if (bAutoClose)  // 如果bAutoClose为真
+			CloseSocket();  // 调用CloseSocket方法关闭套接字
+		return cmd;  // 返回cmd
+	}
+	int GetImage(CImage& image) {  // 获取图像的函数，参数为CImage引用
+		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
+		return CEdoyunTool::Bytes2Image(image, pClient->GetPacket().strData);  // 调用CEdoYunTool的Bytes2Image方法，将pClient获取的数据包中的strData转换为图像image并返回结果
+	}
+	int DownFile(CString strPath) {
+		CFileDialog dlg(
+			FALSE, NULL,
+			strPath, OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+			NULL, &m_remoteDlg);
+		if (dlg.DoModal() == IDOK) {  // 若文件对话框确认（用户选择了本地保存路径等）
+			m_strRemote = strPath;  // 记录远程文件路径
+			m_strLocal = dlg.GetPathName();  // 获取用户选择的本地保存路径
+			// 创建下载线程，传入线程入口函数和this指针
+			m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
+			if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
+				return -1;  // 返回错误标识
+			}
+			m_remoteDlg.BeginWaitCursor();  // 开始显示等待光标
+			m_statusDlg.m_info.SetWindowText(_T("命令正在执行中！"));  // 设置状态对话框文本为“命令正在执行中！”
+			m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
+			m_statusDlg.CenterWindow(&m_remoteDlg);  // 将状态对话框在m_remoteDlg中心显示
+			m_statusDlg.SetActiveWindow();  // 将状态对话框设为活动窗口
+		}
+		return 0;  // 返回成功标识
+	}
 protected:
+	void threadDownloadFile();  // 声明线程函数threadDownloadFile，用于执行文件下载逻辑
+	static void threadDownloadEntry(void* arg);  // 声明静态线程入口函数threadDownloadEntry，符合__stdcall调用约定，参数为void*类型的arg
 	CClientController() :  // CClientController类的构造函数，使用初始化列表
 		m_statusDlg(&m_remoteDlg),  // 初始化m_statusDlg，传入m_remoteDlg的地址
 		m_watchDlg(&m_remoteDlg)  // 初始化m_watchDlg，传入m_remoteDlg的地址
 	{
+		m_hThreadDownload = INVALID_HANDLE_VALUE;  // 将m_hThreadDownload设为无效句柄值
 		m_hThread = INVALID_HANDLE_VALUE;  // 将m_hThread设为无效句柄值
 		m_nThreadID = -1;  // 将m_nThreadID设为-1
 	}
@@ -74,6 +128,11 @@ private:
 	CRemoteClientDlg m_remoteDlg;  // 定义 CRemoteClientDlg 类型的变量 m_remoteDlg
 	CStatusDlg m_statusDlg;  // 定义 CStatusDlg 类型的变量 m_statusDlg
 	HANDLE m_hThread;  // 定义 HANDLE 类型的变量 m_hThread，用于线程句柄
+	HANDLE m_hThreadDownload;  // 定义 HANDLE 类型的变量 m_hThreadDownload，用于下载线程句柄
+	//下载文件的远程路径
+	CString m_strRemote;
+	//下载文件的本地保存路径
+	CString m_strLocal;
 	unsigned m_nThreadID;  // 定义 DWORD 类型的变量 m_nThreadID，用于线程 ID
 	static CClientController* m_instance;
 	class CHelper {                           // 辅助类，用于自动释放单例
