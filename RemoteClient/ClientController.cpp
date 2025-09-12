@@ -90,7 +90,12 @@ int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData,
 {
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 	if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
-	pClient->Send(CPacket(nCmd, pData, nLength));  // 调用pClient的Send方法，发送构造的CPacket对象
+	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	// 创建一个事件对象，参数依次为：安全属性（NULL 表示默认安全属性）、
+	// 手动重置（TRUE，即事件被触发后需手动调用 ResetEvent 重置）、
+	// 初始状态为未触发（FALSE）、事件名称（NULL 表示无名称）
+	//TODO:不应该直接发送 而是投入队列
+	pClient->Send(CPacket(nCmd, pData, nLength, hEvent));  // 调用pClient的Send方法，发送构造的CPacket对象
 	int cmd = DealCommand();  // 调用DealCommand方法处理命令，获取返回值cmd
 	TRACE("ack:%d\r\n", cmd);  // 输出调试信息，显示ack值为cmd
 	if (bAutoClose)  // 如果bAutoClose为真

@@ -3,14 +3,15 @@
 #include "framework.h"                       // 包含框架头文件
 #include <string>                            // 包含字符串处理头文件
 #include <vector>                            // 包含向量容器头文件
-
+#include <list>								 // 包含列表容器头文件
+#include <map>
 #pragma pack(push)                           // 保存当前内存对齐方式
 #pragma pack(1)                              // 设置内存对齐为1字节（紧凑对齐）
 class CPacket                                // 数据包类，用于封装和解析网络传输的数据
 {
 public:
 	CPacket() :sHead(0), nLength(0), sCmd(0), sSum(0) {}  // 默认构造函数，初始化成员变量
-	CPacket(WORD nCmd, const BYTE* pData, size_t nSize) {  // 带参数构造函数，用于创建发送的数据包
+	CPacket(WORD nCmd, const BYTE* pData, size_t nSize, HANDLE hEvent) {  // 带参数构造函数，用于创建发送的数据包
 		sHead = 0xFEFF;                       // 设置固定包头标识
 		nLength = nSize + 4;                  // 计算数据长度（包含命令和校验和的4字节）
 		sCmd = nCmd;                          // 设置命令号
@@ -26,6 +27,7 @@ public:
 		{
 			sSum += BYTE(strData[j]) & 0xFF;
 		}
+		this->hEvent = hEvent;
 	}
 	CPacket(const CPacket& pack) {            // 拷贝构造函数，复制数据包内容
 		sHead = pack.sHead;
@@ -33,8 +35,9 @@ public:
 		sCmd = pack.sCmd;
 		strData = pack.strData;
 		sSum = pack.sSum;
+		hEvent = pack.hEvent;
 	}
-	CPacket(const BYTE* pData, size_t& nSize) {  // 从字节流解析数据包的构造函数
+	CPacket(const BYTE* pData, size_t& nSize) : hEvent(INVALID_HANDLE_VALUE) {  // 从字节流解析数据包的构造函数
 		size_t i = 0;
 		for (; i < nSize; i++) {              // 查找包头标识0xFEFF
 			if (*(WORD*)(pData + i) == 0xFEFF) {
@@ -79,13 +82,14 @@ public:
 			sCmd = pack.sCmd;
 			strData = pack.strData;
 			sSum = pack.sSum;
+			hEvent = pack.hEvent;
 		}
 		return *this;
 	}
 	int Size() {                              // 返回数据包总大小（包头+长度+命令+数据+校验和）
 		return nLength + 6;                   // nLength包含命令+数据+校验和，加上包头2字节共+6
 	}
-	const char* Data(std::string& strOut) const{                      // 生成用于发送的二进制数据流
+	const char* Data(std::string& strOut) const {                      // 生成用于发送的二进制数据流
 		strOut.resize(nLength + 6);           // 调整输出缓冲区大小
 		BYTE* pData = (BYTE*)strOut.c_str();
 		*(WORD*)pData = sHead; pData += 2;    // 写入包头（2字节）
@@ -103,6 +107,7 @@ public:
 	std::string strData;                      // 数据内容（可变长度）
 	WORD sSum;                                // 校验和（数据部分的字节和，2字节）
 	//std::string strOut;                       // 用于存储序列化后的输出数据
+	HANDLE hEvent;                           // 事件句柄（用于同步操作）
 };
 #pragma pack(pop)                            // 恢复之前的内存对齐方式
 
@@ -231,6 +236,9 @@ public:
 		m_nPort = nPort;  // 将传入的nPort赋值给成员变量m_nPort
 	}
 private:
+	std::list<CPacket> m_lstSend; // 定义一个存储 CPacket 类型对象的 std::list 容器 m_lstSend，用于管理待发送的数据包
+	std::map<HANDLE, std::list<CPacket>> m_mapAck;
+	// 定义一个 std::map 容器 m_mapAck，键为 int 类型，值为存储 CPacket 类型对象的 std::list 容器，用于按整数键关联 CPacket 对象的列表
 	int m_nIP;
 	int m_nPort;
 	std::vector<char> m_buffer;               // 接收缓冲区（向量容器）
@@ -252,8 +260,13 @@ private:
 	}
 	~CClientSocket() {                        // 析构函数
 		closesocket(m_sock);                  // 关闭Socket
+		m_sock = INVALID_SOCKET;              // 标记为无效
 		WSACleanup();                         // 清理Socket环境
 	}
+
+	static void threadEntry(void* arg); // 线程入口函数，静态成员函数，接收 void* 类型参数
+	void threadFunc(); // 线程执行的功能函数
+
 	BOOL InitSockEnv() {                      // 初始化Winsock环境
 		WSADATA data;
 		if (WSAStartup(MAKEWORD(1, 1), &data) != 0) {  // 初始化Winsock 1.1版本
