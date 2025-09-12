@@ -41,15 +41,14 @@ void CClientSocket::threadEntry(void* arg)
 }
 void CClientSocket::threadFunc()
 {
-	if (InitSocket() == false) {
-		return;
-	}
 	std::string strBuffer;
 	strBuffer.resize(BUFFER_SIZE); // 调整 strBuffer 大小为 BUFFER_SIZE
 	char* pBuffer = (char*)strBuffer.c_str(); // 获取 strBuffer 的 C 风格字符串指针并转为 char*
 	int index = 0;
 	while (m_sock != INVALID_SOCKET) { // 当套接字有效时循环
 		if (m_lstSend.size() > 0) { // 如果待发送数据包列表不为空
+			TRACE("lstSend size: %d\r\n", m_lstSend.size());// 打印调试信息，输出待发送数据包列表 m_lstSend 的元素数量
+
 			CPacket& head = m_lstSend.front(); // 获取列表头部的数据包引用
 			if (Send(head) == false) { // 调用 Send 函数发送该数据包，若发送失败
 				TRACE("发送失败！\r\n"); // 打印发送失败的调试信息
@@ -77,4 +76,13 @@ void CClientSocket::threadFunc()
 			m_lstSend.pop_front(); // 从待发送列表中移除已处理的数据包
 		}
 	}
+	CloseSocket(); // 关闭套接字连接
+}
+bool CClientSocket::Send(const CPacket& pack)
+{                // 发送数据包
+	TRACE("m_sock = %d\r\n", m_sock);     // 调试输出Socket句柄
+	if (m_sock == -1)return false;        // Socket无效返回false
+	std::string strOut;			  // 用于存储序列化后的数据
+	pack.Data(strOut);                  // 序列化数据包
+	return send(m_sock, strOut.c_str(), strOut.size(), 0) > 0;  // 发送序列化后的数据包
 }

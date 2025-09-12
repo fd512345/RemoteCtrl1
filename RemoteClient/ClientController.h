@@ -7,8 +7,8 @@
 #include <map>
 #include "EdoyunTool.h"
 
-#define WM_SEND_PACK (WM_USER+1)  // 发送包数据
-#define WM_SEND_DATA (WM_USER+2)  // 发送数据
+//#define WM_SEND_PACK (WM_USER+1)  // 发送包数据
+//#define WM_SEND_DATA (WM_USER+2)  // 发送数据
 #define WM_SHOW_STATUS (WM_USER+3)  // 展示状态
 #define WM_SHOW_WATCH (WM_USER+4)  // 远程监控
 #define WM_SEND_MESSAGE (WM_USER+0x1000)  // 自定义消息处理，定义WM_SEND_MESSAGE为WM_USER加上0x1000的消息标识
@@ -38,13 +38,18 @@ public:
 		CClientSocket::getInstance()->CloseSocket();  // 获取CClientSocket单例对象并调用其CloseSocket方法
 	}
 
-	bool SendPacket(const CPacket& pack) {  // 发送数据包的函数，参数为CPacket常量引用
-		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket单例对象指针pClient
-		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
-		pClient->Send(pack);  // 调用pClient的Send方法发送pack
-	}
-
-	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0);
+	//1查看磁盘分区
+	//2查看指定目录下的文件
+	//3打开文件
+	//4下载文件
+	//9删除文件
+	//5鼠标操作
+	//6发送屏幕内容
+	//7锁机
+	//8 解锁
+	//1981测试连接
+	//返回值:是命令号,如果小于0则是错误
+	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0, std::list<CPacket>* plstPacks = NULL);
 
 	int GetImage(CImage& image) {  // 获取图像的函数，参数为CImage引用
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
@@ -54,7 +59,7 @@ public:
 	int DownFile(CString strPath);  // 声明DownFile函数，用于下载文件，参数为CString类型的strPath，返回整数结果
 
 	void StartWatchScreen();  // 声明StartWatchScreen函数，用于启动屏幕监视
-protected:	
+protected:
 	void threadWatchScreen();  // 声明普通函数threadWatchScreen，用于实现屏幕监视相关逻辑
 	static void threadWatchScreen(void* arg);  // 声明静态函数threadWatchScreen（作为线程入口等场景使用），参数为void*类型的arg 
 	void threadDownloadFile();  // 声明线程函数threadDownloadFile，用于执行文件下载逻辑
@@ -83,8 +88,6 @@ protected:
 			TRACE("CClientController has released!\r\n");  // 输出调试信息“CClientController has released!\r\n”，提示CClientController已释放
 		}
 	}
-	LRESULT OnSendPack(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理发送包消息的函数
-	LRESULT OnSendData(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理发送数据消息的函数
 	LRESULT OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示状态消息的函数
 	LRESULT OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理展示监控消息的函数
 

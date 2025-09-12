@@ -199,16 +199,29 @@ public:
 		return -1;                            // 解析失败返回-1
 	}
 
-	bool Send(const char* pData, int nSize) { // 发送原始数据
-		if (m_sock == -1)return false;        // Socket无效返回false
-		return send(m_sock, pData, nSize, 0) > 0;  // 发送数据，返回是否成功
-	}
-	bool Send(const CPacket& pack) {                // 发送数据包
-		TRACE("m_sock = %d\r\n", m_sock);     // 调试输出Socket句柄
-		if (m_sock == -1)return false;        // Socket无效返回false
-		std::string strOut;			  // 用于存储序列化后的数据
-		pack.Data(strOut);                  // 序列化数据包
-		return send(m_sock, strOut.c_str(), strOut.size(), 0) > 0;  // 发送序列化后的数据包
+	bool SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks) {
+		if (m_sock == INVALID_SOCKET)
+		{
+			if (InitSocket() == false) return false;
+			// 调用 InitSocket 函数初始化套接字，若返回 false（初始化失败），则当前函数也返回 false			
+			_beginthread(&CClientSocket::threadEntry, 0, this);
+			// 调用 _beginthread 函数创建一个新线程，线程入口函数为 CClientSocket 类的 threadEntry 静态成员函数，
+			// 线程栈大小为 0（使用默认栈大小），传递当前对象（this 指针）作为线程函数的参数
+
+		}
+		m_lstSend.push_back(pack); // 将数据包 pack 加入待发送队列 m_lstSend
+		WaitForSingleObject(pack.hEvent, INFINITE); // 无限等待 pack 对应的事件对象
+		std::map<HANDLE, std::list<CPacket>>::iterator it;
+		it = m_mapAck.find(pack.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
+		if (it != m_mapAck.end()) { // 如果找到对应的键值对
+			std::list<CPacket>::iterator i;
+			for (i = it->second.begin(); i != it->second.end(); i++) { // 遍历对应的值（CPacket 列表）
+				lstPacks.push_back(*i); // 将当前遍历到的 CPacket 对象加入 lstPacks
+			}
+			m_mapAck.erase(it);// 从 m_mapAck 容器中删除由迭代器 it 指向的键值对
+			return true; // 返回 true 表示成功
+		}
+		return false; // 示例返回值，实际可根据函数逻辑调整返回结果
 	}
 	bool GetFilePath(std::string& strPath) {  // 获取数据包中的文件路径（针对特定命令）
 		if ((m_packet.sCmd >= 2) && (m_packet.sCmd <= 4)) {  // 命令2-4包含文件路径
@@ -231,9 +244,11 @@ public:
 		closesocket(m_sock);
 		m_sock = INVALID_SOCKET;              // 标记为无效
 	}
-	void UpdateAddress(int nIP, int nPort) {  // 更新地址的函数，参数为IP和端口
-		m_nIP = nIP;  // 将传入的nIP赋值给成员变量m_nIP
-		m_nPort = nPort;  // 将传入的nPort赋值给成员变量m_nPort
+	void UpdateAddress(int nIP, int nPort) { // 定义 UpdateAddress 函数，用于更新 IP 和端口，返回 bool 类型
+		if ((m_nIP != nIP) || (m_nPort != nPort)) { // 如果当前 IP 或端口与传入的 nIP、nPort 不同
+			m_nIP = nIP; // 更新 IP 为 nIP
+			m_nPort = nPort; // 更新端口为 nPort
+		}
 	}
 private:
 	std::list<CPacket> m_lstSend; // 定义一个存储 CPacket 类型对象的 std::list 容器 m_lstSend，用于管理待发送的数据包
@@ -250,7 +265,8 @@ private:
 		m_nIP = ss.m_nIP;
 		m_nPort = ss.m_nPort;
 	}
-	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0) {                         // 私有构造函数（单例模式）
+	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SOCKET)
+	{// 私有构造函数（单例模式）
 		if (InitSockEnv() == FALSE) {         // 初始化Socket环境
 			MessageBox(NULL, _T("无法初始化网络环境，程序即将退出！"), _T("初始化错误"), MB_OK | MB_ICONERROR);
 			exit(0);
@@ -283,6 +299,12 @@ private:
 			TRACE("CClientSocket has released!\r\n");  // 输出调试信息，提示CClientSocket已释放
 		}
 	}
+	bool Send(const char* pData, int nSize) { // 发送原始数据
+		if (m_sock == -1)return false;        // Socket无效返回false
+		return send(m_sock, pData, nSize, 0) > 0;  // 发送数据，返回是否成功
+	}
+	bool Send(const CPacket& pack);
+
 	static CClientSocket* m_instance;         // 单例实例指针
 	class CHelper {                           // 辅助类，用于自动释放单例
 	public:

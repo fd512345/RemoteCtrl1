@@ -13,8 +13,8 @@ CClientController* CClientController::getInstance() {
 		TRACE("CClientController size is %d\r\n", sizeof(*m_instance));  // 输出CClientController实例（通过m_instance解引用得到）的大小，格式为“CClientController size is [大小值]\r\n”
 		// 定义结构体数组，存储消息ID与对应的消息处理成员函数指针
 		struct { UINT nMsg; MSGFUNC func; }MsgFuncs[] = {
-			{WM_SEND_PACK, &CClientController::OnSendPack},
-			{WM_SEND_DATA, &CClientController::OnSendData},
+			//{WM_SEND_PACK, &CClientController::OnSendPack},
+			//{WM_SEND_DATA, &CClientController::OnSendData},
 			{WM_SHOW_STATUS, &CClientController::OnShowStatus},
 			{WM_SHOW_WATCH, &CClientController::OnShowWatcher},
 			{(UINT)-1, NULL}  // 数组结束标记，func为NULL
@@ -62,19 +62,6 @@ unsigned __stdcall CClientController::threadEntry(void* arg)
 	return 0;  // 这里的return 0实际可能因_endthreadex的调用而不会执行到，主要是为了符合函数返回值要求等情况
 }
 
-LRESULT CClientController::OnSendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
-{
-	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	CPacket* pPacket = (CPacket*)wParam;  // 将wParam转换为CPacket*类型的pPacket
-	return pClient->Send(*pPacket);  // 调用pClient的Send方法，传入*pPacket，并返回该方法的返回值
-}
-
-LRESULT CClientController::OnSendData(UINT nMsg, WPARAM wParam, LPARAM lParam)
-{
-	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	char* pBuffer = (char*)wParam;  // 将wParam转换为char*类型的pBuffer，用于接收数据缓冲区指针
-	return pClient->Send(pBuffer, (int)lParam);  // 调用pClient的Send方法，发送pBuffer指向的缓冲区数据，数据长度为(int)lParam，并返回该方法的返回值
-}
 
 LRESULT CClientController::OnShowStatus(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -86,21 +73,26 @@ LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam
 	return m_watchDlg.DoModal();
 }
 
-int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength)
+int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength, std::list<CPacket>* plstPacks)
 {
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
 	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	// 创建一个事件对象，参数依次为：安全属性（NULL 表示默认安全属性）、
 	// 手动重置（TRUE，即事件被触发后需手动调用 ResetEvent 重置）、
 	// 初始状态为未触发（FALSE）、事件名称（NULL 表示无名称）
+	// 
 	//TODO:不应该直接发送 而是投入队列
-	pClient->Send(CPacket(nCmd, pData, nLength, hEvent));  // 调用pClient的Send方法，发送构造的CPacket对象
-	int cmd = DealCommand();  // 调用DealCommand方法处理命令，获取返回值cmd
-	TRACE("ack:%d\r\n", cmd);  // 输出调试信息，显示ack值为cmd
-	if (bAutoClose)  // 如果bAutoClose为真
-		CloseSocket();  // 调用CloseSocket方法关闭套接字
-	return cmd;  // 返回cmd
+
+	std::list<CPacket> lstPacks;  // 定义一个CPacket类型的列表lstPacks，用于存储应答结果包
+	if (plstPacks == NULL) // 如果 plstPacks 指针为 NULL（空指针）
+		plstPacks = &lstPacks; // 将 plstPacks 指向 lstPacks（把 lstPacks 的地址赋值给 plstPacks）
+	pClient->SendPacket(CPacket(nCmd, pData, nLength, hEvent), *plstPacks);
+	// 调用 pClient 指向的对象的 SendPacket 方法，发送由 nCmd、pData、nLength、hEvent 构造的 CPacket 数据包，
+	// 并将应答结果存入 lstPacks 中	
+	if (plstPacks->size() > 0) { // 如果 plstPacks 指向的容器中元素数量大于 0
+		return plstPacks->front().sCmd; // 返回容器中第一个元素的 sCmd 成员
+	}
+	return -1;  // 返回cmd
 }
 
 int CClientController::DownFile(CString strPath)
@@ -145,17 +137,14 @@ void CClientController::threadWatchScreen()
 	while (!m_isClosed)
 	{
 		if (m_watchDlg.isFull() == false) {  // 如果远程对话框未处于“满”的状态
-			int ret = SendCommandPacket(6);  // 发送命令码为6的命令包，获取返回值ret
-			if (ret == 6) {  // 如果返回值为6（表示命令发送成功等符合预期的情况）
-				CImage image;  // 定义CImage对象，用于存储获取的图像
-				if (GetImage(m_remoteDlg.GetImage()) == 0)
-				{  // 调用GetImage方法获取图像，若返回值为0（表示获取成功）
-					m_watchDlg.SetImageStatus(true);  // 调用远程对话框的SetImageStatus方法，设置图像状态为true（表示有有效图像等含义）
+			std::list<CPacket> lstPacks; // 定义存储 CPacket 类型对象的列表 lstPacks
+			int ret = SendCommandPacket(6, true, NULL, 0, &lstPacks); // 调用 SendCommandPacket 函数发送命令包，结果存入 ret，应答包存入 lstPacks
+			if (ret == 6) { // 如果返回值 ret 为 6
+				if (CEdoyunTool::Bytes2Image(m_remoteDlg.GetImage(), lstPacks.front().strData) == 0) { // 调用 Bytes2Image 函数将数据转为图像，若成功（返回 0）
+					m_watchDlg.SetImageStatus(true); // 设置图像状态为 true
 				}
-				else
-				{
-					TRACE("获取图片失败! ret = %d\r\n", ret);  // 输出调试信息“获取图片失败！”
-
+				else { // 若 Bytes2Image 函数执行失败
+					TRACE("获取图片失败！ret = %d\r\n", ret); // 打印获取图片失败的调试信息
 				}
 			}
 		}
