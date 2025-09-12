@@ -13,6 +13,7 @@
 #define WM_SHOW_WATCH (WM_USER+4)  // 远程监控
 #define WM_SEND_MESSAGE (WM_USER+0x1000)  // 自定义消息处理，定义WM_SEND_MESSAGE为WM_USER加上0x1000的消息标识
 
+
 class CClientController
 {
 public:
@@ -43,44 +44,14 @@ public:
 		pClient->Send(pack);  // 调用pClient的Send方法发送pack
 	}
 
-	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0) {
-		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-		if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
-		pClient->Send(CPacket(nCmd, pData, nLength));  // 调用pClient的Send方法，发送构造的CPacket对象
-		int cmd = DealCommand();  // 调用DealCommand方法处理命令，获取返回值cmd
-		TRACE("ack:%d\r\n", cmd);  // 输出调试信息，显示ack值为cmd
-		if (bAutoClose)  // 如果bAutoClose为真
-			CloseSocket();  // 调用CloseSocket方法关闭套接字
-		return cmd;  // 返回cmd
-	}
+	int SendCommandPacket(int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0);
 
 	int GetImage(CImage& image) {  // 获取图像的函数，参数为CImage引用
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 		return CEdoyunTool::Bytes2Image(image, pClient->GetPacket().strData);  // 调用CEdoYunTool的Bytes2Image方法，将pClient获取的数据包中的strData转换为图像image并返回结果
 	}
 
-	int DownFile(CString strPath) {
-		CFileDialog dlg(
-			FALSE, NULL,
-			strPath, OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
-			NULL, &m_remoteDlg);
-		if (dlg.DoModal() == IDOK) {  // 若文件对话框确认（用户选择了本地保存路径等）
-			m_strRemote = strPath;  // 记录远程文件路径
-			m_strLocal = dlg.GetPathName();  // 获取用户选择的本地保存路径
-			// 创建下载线程，传入线程入口函数和this指针
-			m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
-			if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
-				return -1;  // 返回错误标识
-			}
-			m_remoteDlg.BeginWaitCursor();  // 开始显示等待光标
-			m_statusDlg.m_info.SetWindowText(_T("命令正在执行中！"));  // 设置状态对话框文本为“命令正在执行中！”
-			m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
-			m_statusDlg.CenterWindow(&m_remoteDlg);  // 将状态对话框在m_remoteDlg中心显示
-			m_statusDlg.SetActiveWindow();  // 将状态对话框设为活动窗口
-	
-		}
-		return 0;  // 返回成功标识
-	}
+	int DownFile(CString strPath);  // 声明DownFile函数，用于下载文件，参数为CString类型的strPath，返回整数结果
 
 	void StartWatchScreen();  // 声明StartWatchScreen函数，用于启动屏幕监视
 protected:	
@@ -109,6 +80,7 @@ protected:
 		if (m_instance != NULL) {
 			delete m_instance;
 			m_instance = NULL;
+			TRACE("CClientController has released!\r\n");  // 输出调试信息“CClientController has released!\r\n”，提示CClientController已释放
 		}
 	}
 	LRESULT OnSendPack(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 声明处理发送包消息的函数
@@ -157,7 +129,7 @@ private:
 	class CHelper {                           // 辅助类，用于自动释放单例
 	public:
 		CHelper() {
-			CClientController::getInstance();     // 构造时创建实例
+			//CClientController::getInstance();     // 构造时创建实例
 		}
 		~CHelper() {
 			CClientController::releaseInstance(); // 析构时释放实例

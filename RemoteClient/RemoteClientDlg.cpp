@@ -55,8 +55,8 @@ END_MESSAGE_MAP()  // 关于对话框消息映射结束
 
 CRemoteClientDlg::CRemoteClientDlg(CWnd* pParent /*=nullptr*/)  // 主对话框构造函数
 	: CDialogEx(IDD_REMOTECLIENT_DIALOG, pParent)  // 初始化基类
-	, m_server_address(0)  // 初始化服务器地址
-	, m_nPort(_T(""))  // 初始化端口号
+	, m_server_address(0x7F000001)  // 初始化服务器地址
+	, m_nPort(_T("9527"))  // 初始化端口号
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);  // 加载应用程序图标
 }
@@ -82,7 +82,6 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)  // 主对话框消息映射开�
 	ON_COMMAND(ID_DOWNLOAD_FILE, &CRemoteClientDlg::OnDownloadFile)  // 下载文件命令
 	ON_COMMAND(ID_DELETE_FILE, &CRemoteClientDlg::OnDeleteFile)  // 删除文件命令
 	ON_COMMAND(ID_RUN_FILE, &CRemoteClientDlg::OnRunFile)  // 运行文件命令
-	ON_MESSAGE(WM_SEND_PACKET, &CRemoteClientDlg::OnSendPacket) // 注册自定义消息处理函数
 	ON_BN_CLICKED(IDC_BTN_START_WATCH, &CRemoteClientDlg::OnBnClickedBtnStartWatch)  // 开始监控按钮点击事件
 	ON_WM_TIMER()  // 定时器消息
 	ON_EN_CHANGE(IDC_EDIT_PORT, &CRemoteClientDlg::OnEnChangeEditPort)  // 端口编辑框内容改变事件
@@ -132,7 +131,6 @@ BOOL CRemoteClientDlg::OnInitDialog()  // 对话框初始化函数
 	UpdateData(FALSE);  // 将变量数据更新到控件
 	m_dlgStatus.Create(IDD_DLG_STATUS, this);  // 创建状态对话框
 	m_dlgStatus.ShowWindow(SW_HIDE);  // 隐藏状态对话框
-	m_isFull = false;  // 初始化图像缓存状态
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -387,32 +385,7 @@ void CRemoteClientDlg::OnRunFile()  // 运行文件命令处理函数
 	}
 }
 
-LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)  // 自定义消息处理函数
-{//实现消息响应函数④
-	int ret = 0;
-	int cmd = wParam >> 1;  // 获取命令
-	switch (cmd) {
-	case 4: {  // 下载文件命令
-		CString strFile = (LPCSTR)lParam;  // 获取文件路径
-		ret = CClientController::getInstance()->SendCommandPacket(cmd, wParam & 1, (BYTE*)(LPCSTR)strFile, strFile.GetLength());  // 发送命令
-	}
-		  break;
-	case 5: {//鼠标操作命令
-		ret = CClientController::getInstance()->SendCommandPacket(cmd, wParam & 1, (BYTE*)lParam, sizeof(MOUSEEV));  // 发送命令
-	}
-		  break;
-	case 6:  // 获取屏幕数据命令
-	case 7:  // 锁定机器命令
-	case 8: {  // 解锁机器命令
-		ret = CClientController::getInstance()->SendCommandPacket(cmd, wParam & 1);  // 发送命令
-	}
-		  break;
-	default:  // 其他命令
-		ret = -1;  // 返回错误码
-	}
 
-	return ret;  // 返回结果
-}
 
 
 void CRemoteClientDlg::OnBnClickedBtnStartWatch()  // 开始监控按钮点击事件处理函数

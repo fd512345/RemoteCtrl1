@@ -5,11 +5,12 @@
 std::map<UINT, CClientController::MSGFUNC>  // 定义一个std::map类型，键为UINT，值为CClientController类的MSGFUNC类型
 CClientController::m_mapFunc;  // CClientController类的静态成员变量m_mapFunc，用于存储消息与对应处理函数的映射
 CClientController* CClientController::m_instance = NULL;  // CClientController类的静态成员变量m_instance，初始化为NULL，用于实现单例模式
-
+CClientController::CHelper CClientController::m_helper;  // 定义CClientController类的静态成员变量m_helper，其类型为CClientController类中的CHelper类
 
 CClientController* CClientController::getInstance() {
 	if (m_instance == NULL) {  // 检查单例实例是否为空
 		m_instance = new CClientController();  // 若为空，创建CClientController实例
+		TRACE("CClientController size is %d\r\n", sizeof(*m_instance));  // 输出CClientController实例（通过m_instance解引用得到）的大小，格式为“CClientController size is [大小值]\r\n”
 		// 定义结构体数组，存储消息ID与对应的消息处理成员函数指针
 		struct { UINT nMsg; MSGFUNC func; }MsgFuncs[] = {
 			{WM_SEND_PACK, &CClientController::OnSendPack},
@@ -23,7 +24,7 @@ CClientController* CClientController::getInstance() {
 			m_mapFunc.insert(std::pair<UINT, MSGFUNC>(MsgFuncs[i].nMsg, MsgFuncs[i].func));
 		}
 	}
-	return nullptr;  // 返回nullptr（此处存在问题，单例模式应返回创建的m_instance）
+	return m_instance;  // 返回nullptr（此处存在问题，单例模式应返回创建的m_instance）
 }
 
 int CClientController::Invoke(CWnd*& m_pMainWnd)
@@ -85,13 +86,49 @@ LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam
 	return m_watchDlg.DoModal();
 }
 
+int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength)
+{
+	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
+	if (pClient->InitSocket() == false) return false;  // 调用pClient的InitSocket方法，若失败则返回false
+	pClient->Send(CPacket(nCmd, pData, nLength));  // 调用pClient的Send方法，发送构造的CPacket对象
+	int cmd = DealCommand();  // 调用DealCommand方法处理命令，获取返回值cmd
+	TRACE("ack:%d\r\n", cmd);  // 输出调试信息，显示ack值为cmd
+	if (bAutoClose)  // 如果bAutoClose为真
+		CloseSocket();  // 调用CloseSocket方法关闭套接字
+	return cmd;  // 返回cmd
+}
+
+int CClientController::DownFile(CString strPath)
+{
+	CFileDialog dlg(
+		FALSE, NULL,
+		strPath, OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+		NULL, &m_remoteDlg);
+	if (dlg.DoModal() == IDOK) {  // 若文件对话框确认（用户选择了本地保存路径等）
+		m_strRemote = strPath;  // 记录远程文件路径
+		m_strLocal = dlg.GetPathName();  // 获取用户选择的本地保存路径
+		// 创建下载线程，传入线程入口函数和this指针
+		m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
+		if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
+			return -1;  // 返回错误标识
+		}
+		m_remoteDlg.BeginWaitCursor();  // 开始显示等待光标
+		m_statusDlg.m_info.SetWindowText(_T("命令正在执行中！"));  // 设置状态对话框文本为“命令正在执行中！”
+		m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
+		m_statusDlg.CenterWindow(&m_remoteDlg);  // 将状态对话框在m_remoteDlg中心显示
+		m_statusDlg.SetActiveWindow();  // 将状态对话框设为活动窗口
+
+	}
+	return 0;
+}
+
 void CClientController::StartWatchScreen()
 {
 	m_isClosed = false;  // 设置标记m_isClosed为false，表示未关闭
-	CWatchDialog dlg(&m_remoteDlg);  // 创建CWatchDialog对话框对象dlg，传入m_remoteDlg的地址
+	//m_watchDlg.SetParent(&m_remoteDlg); // 将 m_watchDlg 的父窗口设置为 m_remoteDlg
 	// 创建屏幕监视线程，线程入口函数为CClientController的threadWatchScreen，栈大小为0，传入this指针作为参数
 	m_hThreadWatch = (HANDLE)_beginthread(&CClientController::threadWatchScreen, 0, this);
-	dlg.DoModal();  // 以模态方式显示对话框dlg
+	m_watchDlg.DoModal();  // 以模态方式显示对话框dlg
 	m_isClosed = true;  // 对话框关闭后，设置m_isClosed为true
 	// 等待屏幕监视线程结束，超时时间为500毫秒
 	WaitForSingleObject(m_hThreadWatch, 500);
@@ -102,13 +139,13 @@ void CClientController::threadWatchScreen()
 	Sleep(50);
 	while (!m_isClosed)
 	{
-		if (m_remoteDlg.isFull() == false) {  // 如果远程对话框未处于“满”的状态
+		if (m_watchDlg.isFull() == false) {  // 如果远程对话框未处于“满”的状态
 			int ret = SendCommandPacket(6);  // 发送命令码为6的命令包，获取返回值ret
 			if (ret == 6) {  // 如果返回值为6（表示命令发送成功等符合预期的情况）
 				CImage image;  // 定义CImage对象，用于存储获取的图像
 				if (GetImage(m_remoteDlg.GetImage()) == 0)
 				{  // 调用GetImage方法获取图像，若返回值为0（表示获取成功）
-					m_remoteDlg.SetImageStatus(true);  // 调用远程对话框的SetImageStatus方法，设置图像状态为true（表示有有效图像等含义）
+					m_watchDlg.SetImageStatus(true);  // 调用远程对话框的SetImageStatus方法，设置图像状态为true（表示有有效图像等含义）
 				}
 				else
 				{

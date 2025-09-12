@@ -139,6 +139,7 @@ public:
 	static CClientSocket* getInstance() {     // 单例模式，获取实例
 		if (m_instance == NULL) {
 			m_instance = new CClientSocket();
+			TRACE("CClientSocket size is %d\r\n", sizeof(*m_instance));  // 输出调试信息，显示CClientSocket实例（通过m_instance解引用得到）的大小，格式为“CClientSocket size is [大小值]\r\n”
 		}
 		return m_instance;
 	}
@@ -169,17 +170,21 @@ public:
 #define BUFFER_SIZE 2048000                  // 定义接收缓冲区大小（2MB）
 	int DealCommand() {                      // 处理接收的命令（解析数据包）
 		if (m_sock == -1)return -1;           // Socket无效返回-1
-		char* buffer = m_buffer.data();       // 获取缓冲区指针
+		char* buffer = m_buffer.data();      //TODO:多线程发送命令时可能会出现冲突 // 获取缓冲区指针
 		static size_t index = 0;              // 缓冲区当前数据长度（静态变量，累计未解析数据）
 		while (true) {
 			size_t len = recv(m_sock, buffer + index, BUFFER_SIZE - index, 0);  // 接收数据到缓冲区
-			if ((len <= 0) && (index <= 0)) {  // 接收失败且无未解析数据
+			if (((int)len <= 0) && ((int)index <= 0)) {  // 接收失败且无未解析数据
 				return -1;
 			}
+			TRACE("recv len = %d(0x%08X) index = %d(0x%08X)\r\n", len, len, index, index);
+			// 打印接收数据的长度（十进制和十六进制）以及索引值（十进制和十六进制）
 			//Dump((BYTE*)buffer, index);      // 调试打印缓冲区数据（注释掉）
 			index += len;                     // 更新缓冲区数据长度
 			len = index;                      // 当前总数据长度
 			m_packet = CPacket((BYTE*)buffer, len);  // 解析数据包
+			TRACE("command %d\r\n", m_packet.sCmd);
+			// 打印 m_packet 中的命令值（以十进制形式）
 			if (len > 0) {                    // 解析到有效数据包
 				memmove(buffer, buffer + len, index - len);  // 移动剩余数据到缓冲区头部
 				index -= len;                 // 更新剩余数据长度
@@ -257,10 +262,12 @@ private:
 		return TRUE;
 	}
 	static void releaseInstance() {           // 释放单例实例
+		TRACE("CClientSocket has been called!\r\n");  // 输出调试信息，提示CClientSocket被调用
 		if (m_instance != NULL) {
-			CClientSocket* tmp = m_instance;
-			m_instance = NULL;
-			delete tmp;
+			CClientSocket* tmp = m_instance;  // 将m_instance指向的对象地址暂存到tmp
+			m_instance = NULL;  // 把m_instance置为NULL，避免悬空指针
+			delete tmp;  // 释放tmp指向的CClientSocket对象内存
+			TRACE("CClientSocket has released!\r\n");  // 输出调试信息，提示CClientSocket已释放
 		}
 	}
 	static CClientSocket* m_instance;         // 单例实例指针
