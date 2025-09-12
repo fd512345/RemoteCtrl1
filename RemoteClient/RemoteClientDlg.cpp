@@ -238,7 +238,7 @@ void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 		if (cmd < 0)break;  // 响应错误则跳出循环
 		pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取下一个文件信息
 	}
-	CClientController::getInstance()->CloseSocket();  // 关闭套接字
+	//CClientController::getInstance()->CloseSocket();  // 关闭套接字
 }
 
 void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
@@ -280,7 +280,7 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 		if (cmd < 0)break;  // 响应错误则跳出循环
 		pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取下一个文件信息
 	}
-	CClientController::getInstance()->CloseSocket();  // 关闭套接字
+	//CClientController::getInstance()->CloseSocket();  // 关闭套接字
 	TRACE("Count = %d\r\n", Count);  // 输出文件数量
 }
 

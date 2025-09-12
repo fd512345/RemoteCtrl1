@@ -34,6 +34,32 @@ void Dump(BYTE* pData, size_t nSize)
 	strOut += "\n";
 	OutputDebugStringA(strOut.c_str());
 }
+bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed)
+{
+	if (m_sock == INVALID_SOCKET)
+	{
+		//if (InitSocket() == false) return false;
+		// 调用 InitSocket 函数初始化套接字，若返回 false（初始化失败），则当前函数也返回 false			
+		_beginthread(&CClientSocket::threadEntry, 0, this);
+		// 调用 _beginthread 函数创建一个新线程，线程入口函数为 CClientSocket 类的 threadEntry 静态成员函数，
+		// 线程栈大小为 0（使用默认栈大小），传递当前对象（this 指针）作为线程函数的参数
+
+	}
+	auto pr = m_mapAck.insert(std::pair<HANDLE, std::list<CPacket>>(pack.hEvent, lstPacks));
+	m_mapAutoClosed.insert(std::pair<HANDLE, bool>(pack.hEvent, isAutoClosed));
+	// 向 m_mapAck 中插入一个键为 head.hEvent（HANDLE 类型）、值为空 lstPacks
+	// auto 用于自动推导 pr 的类型（std::pair<std::map<HANDLE, std::list<CPacket>>::iterator, bool>）
+	m_lstSend.push_back(pack); // 将数据包 pack 加入待发送队列 m_lstSend
+	WaitForSingleObject(pack.hEvent, INFINITE); // 无限等待 pack 对应的事件对象
+	std::map<HANDLE, std::list<CPacket>>::iterator it;
+	it = m_mapAck.find(pack.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
+
+	if (it != m_mapAck.end()) { // 如果找到对应的键值对
+		m_mapAck.erase(it);// 从 m_mapAck 容器中删除由迭代器 it 指向的键值对
+		return true; // 返回 true 表示成功
+	}
+	return false; // 示例返回值，实际可根据函数逻辑调整返回结果
+}
 void CClientSocket::threadEntry(void* arg)
 {
 	CClientSocket* thiz = (CClientSocket*)arg; // 将 void* 类型的 arg 强制转换为 CClientSocket* 类型并赋值给 thiz
@@ -45,6 +71,7 @@ void CClientSocket::threadFunc()
 	strBuffer.resize(BUFFER_SIZE); // 调整 strBuffer 大小为 BUFFER_SIZE
 	char* pBuffer = (char*)strBuffer.c_str(); // 获取 strBuffer 的 C 风格字符串指针并转为 char*
 	int index = 0;
+	InitSocket();
 	while (m_sock != INVALID_SOCKET) { // 当套接字有效时循环
 		if (m_lstSend.size() > 0) { // 如果待发送数据包列表不为空
 			TRACE("lstSend size: %d\r\n", m_lstSend.size());// 打印调试信息，输出待发送数据包列表 m_lstSend 的元素数量
@@ -52,28 +79,43 @@ void CClientSocket::threadFunc()
 			CPacket& head = m_lstSend.front(); // 获取列表头部的数据包引用
 			if (Send(head) == false) { // 调用 Send 函数发送该数据包，若发送失败
 				TRACE("发送失败！\r\n"); // 打印发送失败的调试信息
+
 				continue; // 继续循环，尝试后续操作或再次发送
 			}
-
-			auto pr = m_mapAck.insert(std::pair<HANDLE, std::list<CPacket>>(head.hEvent, std::list<CPacket>()));
-			// 向 m_mapAck 中插入一个键为 head.hEvent（HANDLE 类型）、值为空 std::list<CPacket> 的键值对，
-			// auto 用于自动推导 pr 的类型（std::pair<std::map<HANDLE, std::list<CPacket>>::iterator, bool>）
-			int length = recv(m_sock, pBuffer + index, BUFFER_SIZE - index, 0);
-			if (length > 0 || index > 0) {
-				index += length; // 累加接收数据的长度到索引，方便后续处理
-				size_t size = (size_t)index; // 将索引转换为 size_t 类型，用于表示数据大小
-				CPacket pack((BYTE*)pBuffer, size); // 用接收到的数据和大小构造 CPacket 对象
-				if (size > 0) { // 如果有有效数据
-					// 向 m_mapAck 中键为 head.hEvent 的对应值（std::list<CPacket> 类型）中添加数据包 pack				
-					pack.hEvent = head.hEvent; // 将数据包的事件句柄设置为发送数据包的事件句柄
-					pr.first->second.push_back(pack);
-					SetEvent(head.hEvent); // 触发数据包关联的事件，通知数据已准备好
+			std::map<HANDLE, std::list<CPacket>>::iterator it;
+			it = m_mapAck.find(head.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
+			std::map<HANDLE, bool>::iterator it0 = m_mapAutoClosed.find(head.hEvent);
+			// 在 m_mapAutoClosed 这个 std::map 容器中，查找键为 head.hEvent 的键值对，
+			// 并将找到的迭代器（若存在）或 end() 迭代器赋值给 it0
+			do
+			{
+				int length = recv(m_sock, pBuffer + index, BUFFER_SIZE - index, 0);
+				if (length > 0 || index > 0) {
+					index += length; // 累加接收数据的长度到索引，方便后续处理
+					size_t size = (size_t)index; // 将索引转换为 size_t 类型，用于表示数据大小
+					CPacket pack((BYTE*)pBuffer, size); // 用接收到的数据和大小构造 CPacket 对象
+					if (size > 0) { // 如果有有效数据
+						// 向 m_mapAck 中键为 head.hEvent 的对应值（std::list<CPacket> 类型）中添加数据包 pack				
+						pack.hEvent = head.hEvent; // 将数据包的事件句柄设置为发送数据包的事件句柄
+						it->second.push_back(pack);
+						SetEvent(head.hEvent); // 触发数据包关联的事件，通知数据已准备好
+						memmove(pBuffer, pBuffer + size, index - size);
+						index -= size;
+						if (it0->second)
+						{
+							SetEvent(head.hEvent);
+						}
+					}
 				}
-			}
-			else if (length <= 0 && index <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
-				CloseSocket(); // 关闭套接字
-			}
+				else if (length <= 0 && index <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
+					CloseSocket(); // 关闭套接字
+					SetEvent(head.hEvent);//等到服务器关闭命令之后 再通知事件完成
+
+				}
+			} while (it0->second == false);
+
 			m_lstSend.pop_front(); // 从待发送列表中移除已处理的数据包
+			InitSocket();
 		}
 	}
 	CloseSocket(); // 关闭套接字连接

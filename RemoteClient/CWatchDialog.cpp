@@ -67,7 +67,7 @@ BOOL CWatchDialog::OnInitDialog()
 	m_isFull = false;  // 初始化图像缓存状态
 	SetTimer(0, 45, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
-				  // 异常: OCX 属性页应返回 FALSE
+	// 异常: OCX 属性页应返回 FALSE
 }
 
 
@@ -77,21 +77,19 @@ void CWatchDialog::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == 0) {
 		CClientController* pParent = CClientController::getInstance();
 		if (m_isFull) {
+
 			CRect rect;
 			m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
-			CImage image;
-			pParent->GetImage(image); // 从父对象获取图像
-			if (m_nObjWidth == -1) {
-				m_nObjWidth = image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
-			}
-			if (m_nObjHeight == -1) {
-				m_nObjHeight = image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
-			}
-			image.StretchBlt(
+			m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
+			m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
+			m_image.StretchBlt(
 				m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
 			m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
-			image.Destroy(); // 销毁图像对象，释放资源
+			m_image.Destroy(); // 销毁图像对象，释放资源
 			m_isFull = false; // 标记不再处于“满”状态
+			TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
+			// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
+			// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）		
 		}
 	}
 	CDialog::OnTimer(nIDEvent);

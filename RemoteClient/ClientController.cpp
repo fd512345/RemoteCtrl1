@@ -39,7 +39,8 @@ LRESULT CClientController::SendMessage(MSG msg)
 	if (hEvent == NULL) return -2;  // 如果创建失败，返回-2
 	MSGINFO info(msg);  // 用msg构造MSGINFO对象info
 	PostThreadMessage(m_nThreadID, WM_SEND_MESSAGE, (WPARAM)&info, (LPARAM)hEvent);  // 向指定线程发送消息，传递info和hEvent
-	WaitForSingleObject(hEvent, -1);  // 等待事件对象hEvent，直到有信号
+	WaitForSingleObject(hEvent, INFINITE);  // 等待事件对象hEvent，直到有信号
+	CloseHandle(hEvent);
 	return info.result;  // 返回info的result值
 }
 
@@ -75,6 +76,8 @@ LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam
 
 int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength, std::list<CPacket>* plstPacks)
 {
+	TRACE("cmd: %d %s start %lld \r\n", nCmd, __FUNCTION__, GetTickCount64());
+	// 打印当前函数名（__FUNCTION__）以及调用 GetTickCount64() 获取的当前系统启动后的毫秒数（64位），用于调试时记录函数开始执行的时间点
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	// 创建一个事件对象，参数依次为：安全属性（NULL 表示默认安全属性）、
@@ -89,9 +92,12 @@ int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData,
 	pClient->SendPacket(CPacket(nCmd, pData, nLength, hEvent), *plstPacks);
 	// 调用 pClient 指向的对象的 SendPacket 方法，发送由 nCmd、pData、nLength、hEvent 构造的 CPacket 数据包，
 	// 并将应答结果存入 lstPacks 中	
+	CloseHandle(hEvent);//回收事件句柄，防止资源耗尽
 	if (plstPacks->size() > 0) { // 如果 plstPacks 指向的容器中元素数量大于 0
+		TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
 		return plstPacks->front().sCmd; // 返回容器中第一个元素的 sCmd 成员
 	}
+	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
 	return -1;  // 返回cmd
 }
 
@@ -140,8 +146,12 @@ void CClientController::threadWatchScreen()
 			std::list<CPacket> lstPacks; // 定义存储 CPacket 类型对象的列表 lstPacks
 			int ret = SendCommandPacket(6, true, NULL, 0, &lstPacks); // 调用 SendCommandPacket 函数发送命令包，结果存入 ret，应答包存入 lstPacks
 			if (ret == 6) { // 如果返回值 ret 为 6
-				if (CEdoyunTool::Bytes2Image(m_remoteDlg.GetImage(), lstPacks.front().strData) == 0) { // 调用 Bytes2Image 函数将数据转为图像，若成功（返回 0）
+
+				if (CEdoyunTool::Bytes2Image(m_watchDlg.GetImage(), lstPacks.front().strData) == 0) { // 调用 Bytes2Image 函数将数据转为图像，若成功（返回 0）
 					m_watchDlg.SetImageStatus(true); // 设置图像状态为 true
+					TRACE("成功设置图片 %08X\r\n", (HBITMAP)m_watchDlg.GetImage());
+					TRACE("和校验：%04X\r\n", lstPacks.front().sSum);
+					// 打印调试信息，输出“和校验：”以及 lstPacks 列表中第一个元素的 sSum 成员（以4位十六进制形式显示，不足补0）
 				}
 				else { // 若 Bytes2Image 函数执行失败
 					TRACE("获取图片失败！ret = %d\r\n", ret); // 打印获取图片失败的调试信息
