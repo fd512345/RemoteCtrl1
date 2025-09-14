@@ -34,29 +34,59 @@ void Dump(BYTE* pData, size_t nSize)
 	strOut += "\n";
 	OutputDebugStringA(strOut.c_str());
 }
+bool CClientSocket::InitSocket()
+{     // 初始化Socket并连接服务器
+	if (m_sock != INVALID_SOCKET)CloseSocket();  // 关闭已有连接
+	m_sock = socket(PF_INET, SOCK_STREAM, 0);  // 创建TCP Socket
+	if (m_sock == -1)return false;        // 创建失败返回false
+	sockaddr_in serv_adr;                 // 服务器地址结构体
+	memset(&serv_adr, 0, sizeof(serv_adr));
+	serv_adr.sin_family = AF_INET;        // IPv4协议
+	TRACE("addr %08X nIP %08X\r\n", inet_addr("127.0.0.1"), m_nIP);  // 调试输出IP
+	serv_adr.sin_addr.s_addr = htonl(m_nIP);  // 设置服务器IP（主机字节序转网络字节序）
+	serv_adr.sin_port = htons(m_nPort);     // 设置服务器端口（主机字节序转网络字节序）
+	if (serv_adr.sin_addr.s_addr == INADDR_NONE) {  // IP地址无效
+		AfxMessageBox("指定的IP地址不存在！");
+		return false;
+	}
+	int ret = connect(m_sock, (sockaddr*)&serv_adr, sizeof(serv_adr));  // 连接服务器
+	if (ret == -1) {                      // 连接失败
+		AfxMessageBox("连接失败!");
+		TRACE("连接失败：%d %s\r\n", WSAGetLastError(), GetErrInfo(WSAGetLastError()).c_str());
+		return false;
+	}
+	TRACE("socket init done!\r\n");
+	return true;                           // 连接成功
+}
 bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed)
 {
-	if (m_sock == INVALID_SOCKET)
+	if (m_sock == INVALID_SOCKET && m_hThread == INVALID_HANDLE_VALUE)
 	{
 		//if (InitSocket() == false) return false;
 		// 调用 InitSocket 函数初始化套接字，若返回 false（初始化失败），则当前函数也返回 false			
-		_beginthread(&CClientSocket::threadEntry, 0, this);
+		m_hThread = (HANDLE)_beginthread(&CClientSocket::threadEntry, 0, this);
+		TRACE("start thread\r\n");  // 输出调试信息“start thread”，用于在调试时跟踪线程启动的相关情况
 		// 调用 _beginthread 函数创建一个新线程，线程入口函数为 CClientSocket 类的 threadEntry 静态成员函数，
 		// 线程栈大小为 0（使用默认栈大小），传递当前对象（this 指针）作为线程函数的参数
 
 	}
+	m_lock.lock();
 	auto pr = m_mapAck.insert(std::pair<HANDLE, std::list<CPacket>&>(pack.hEvent, lstPacks));
 	m_mapAutoClosed.insert(std::pair<HANDLE, bool>(pack.hEvent, isAutoClosed));
 	// 向 m_mapAck 中插入一个键为 head.hEvent（HANDLE 类型）、值为空 lstPacks
 	// auto 用于自动推导 pr 的类型（std::pair<std::map<HANDLE, std::list<CPacket>>::iterator, bool>）
-	TRACE("cmd:%d event: %08X\r\n", pack.sCmd, pack.hEvent);  // 输出调试信息，格式为“cmd:命令值 event 事件句柄的8位十六进制值”，用于调试跟踪命令和事件相关信息
 	m_lstSend.push_back(pack); // 将数据包 pack 加入待发送队列 m_lstSend
+	m_lock.unlock();
+	TRACE("cmd:%d event: %08X\r\n", pack.sCmd, pack.hEvent);  // 输出调试信息，格式为“cmd:命令值 event 事件句柄的8位十六进制值”，用于调试跟踪命令和事件相关信息
 	WaitForSingleObject(pack.hEvent, INFINITE); // 无限等待 pack 对应的事件对象
+	TRACE("cmd:%d event: %08X\r\n", pack.sCmd, pack.hEvent);  // 输出调试信息，格式为“cmd:命令值 event 事件句柄的8位十六进制值”，用于调试跟踪命令和事件相关信息
 	std::map<HANDLE, std::list<CPacket>&>::iterator it;
 	it = m_mapAck.find(pack.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
 
 	if (it != m_mapAck.end()) { // 如果找到对应的键值对
+		m_lock.lock();
 		m_mapAck.erase(it);// 从 m_mapAck 容器中删除由迭代器 it 指向的键值对
+		m_lock.unlock();
 		return true; // 返回 true 表示成功
 	}
 	return false; // 示例返回值，实际可根据函数逻辑调整返回结果
@@ -76,8 +106,9 @@ void CClientSocket::threadFunc()
 	while (m_sock != INVALID_SOCKET) { // 当套接字有效时循环
 		if (m_lstSend.size() > 0) { // 如果待发送数据包列表不为空
 			TRACE("lstSend size: %d\r\n", m_lstSend.size());// 打印调试信息，输出待发送数据包列表 m_lstSend 的元素数量
-
+			m_lock.lock();
 			CPacket& head = m_lstSend.front(); // 获取列表头部的数据包引用
+			m_lock.unlock();
 			if (Send(head) == false) { // 调用 Send 函数发送该数据包，若发送失败
 				TRACE("发送失败！\r\n"); // 打印发送失败的调试信息
 
@@ -92,7 +123,8 @@ void CClientSocket::threadFunc()
 				do
 				{
 					int length = recv(m_sock, pBuffer + index, BUFFER_SIZE - index, 0);
-					if (length > 0 || index > 0) {
+					TRACE("recv %d %d\r\n", length, index);
+					if ((length > 0) || (index > 0)) {
 						index += length; // 累加接收数据的长度到索引，方便后续处理
 						size_t size = (size_t)index; // 将索引转换为 size_t 类型，用于表示数据大小
 						CPacket pack((BYTE*)pBuffer, size); // 用接收到的数据和大小构造 CPacket 对象
@@ -103,26 +135,31 @@ void CClientSocket::threadFunc()
 							SetEvent(head.hEvent); // 触发数据包关联的事件，通知数据已准备好
 							memmove(pBuffer, pBuffer + size, index - size);
 							index -= size;
+							TRACE("SetEvent %d %d\r\n", pack.sCmd, it0->second);
 							if (it0->second)
 							{
 								SetEvent(head.hEvent);
+								break;
 							}
 						}
 					}
-					else if (length <= 0 && index <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
+					else if (length <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
 						CloseSocket(); // 关闭套接字
 						SetEvent(head.hEvent);//等到服务器关闭命令之后 再通知事件完成
 						m_mapAutoClosed.erase(it0);
+						TRACE("SetEvent %d %d\r\n", head.sCmd, it0->second);
 						break;
 					}
 				} while (it0->second == false);
 			}
-			
 
+			m_lock.lock();
 			m_lstSend.pop_front(); // 从待发送列表中移除已处理的数据包
+			m_lock.unlock();
 			if (InitSocket() == false)
 				InitSocket();
 		}
+		Sleep(1);
 	}
 	CloseSocket(); // 关闭套接字连接
 }

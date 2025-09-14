@@ -5,6 +5,7 @@
 #include <vector>                            // 包含向量容器头文件
 #include <list>								 // 包含列表容器头文件
 #include <map>
+#include <mutex>
 #pragma pack(push)                           // 保存当前内存对齐方式
 #pragma pack(1)                              // 设置内存对齐为1字节（紧凑对齐）
 class CPacket                                // 数据包类，用于封装和解析网络传输的数据
@@ -148,31 +149,10 @@ public:
 		}
 		return m_instance;
 	}
-	bool InitSocket() {     // 初始化Socket并连接服务器
-		if (m_sock != INVALID_SOCKET)CloseSocket();  // 关闭已有连接
-		m_sock = socket(PF_INET, SOCK_STREAM, 0);  // 创建TCP Socket
-		if (m_sock == -1)return false;        // 创建失败返回false
-		sockaddr_in serv_adr;                 // 服务器地址结构体
-		memset(&serv_adr, 0, sizeof(serv_adr));
-		serv_adr.sin_family = AF_INET;        // IPv4协议
-		TRACE("addr %08X nIP %08X\r\n", inet_addr("127.0.0.1"), m_nIP);  // 调试输出IP
-		serv_adr.sin_addr.s_addr = htonl(m_nIP);  // 设置服务器IP（主机字节序转网络字节序）
-		serv_adr.sin_port = htons(m_nPort);     // 设置服务器端口（主机字节序转网络字节序）
-		if (serv_adr.sin_addr.s_addr == INADDR_NONE) {  // IP地址无效
-			AfxMessageBox("指定的IP地址不存在！");
-			return false;
-		}
-		int ret = connect(m_sock, (sockaddr*)&serv_adr, sizeof(serv_adr));  // 连接服务器
-		if (ret == -1) {                      // 连接失败
-			AfxMessageBox("连接失败!");
-			TRACE("连接失败：%d %s\r\n", WSAGetLastError(), GetErrInfo(WSAGetLastError()).c_str());
-			return false;
-		}
-		return true;                           // 连接成功
-	}
+	bool InitSocket();
 
 
-#define BUFFER_SIZE 2048000                  // 定义接收缓冲区大小（2MB）
+#define BUFFER_SIZE 4096000                  // 定义接收缓冲区大小（2MB）
 	int DealCommand() {                      // 处理接收的命令（解析数据包）
 		if (m_sock == -1)return -1;           // Socket无效返回-1
 		char* buffer = m_buffer.data();      //TODO:多线程发送命令时可能会出现冲突 // 获取缓冲区指针
@@ -228,7 +208,9 @@ public:
 		}
 	}
 private:
+	HANDLE m_hThread;
 	bool m_bAutoClose;
+	std::mutex m_lock;
 	std::list<CPacket> m_lstSend; // 定义一个存储 CPacket 类型对象的 std::list 容器 m_lstSend，用于管理待发送的数据包
 	std::map<HANDLE, std::list<CPacket>&> m_mapAck;
 	// 定义一个 std::map 容器 m_mapAck，键为 int 类型，值为存储 CPacket 类型对象的 std::list 容器，用于按整数键关联 CPacket 对象的列表
@@ -245,7 +227,7 @@ private:
 		m_nIP = ss.m_nIP;
 		m_nPort = ss.m_nPort;
 	}
-	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SOCKET), m_bAutoClose(true)
+	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SOCKET), m_bAutoClose(true), m_hThread(INVALID_HANDLE_VALUE)
 	{// 私有构造函数（单例模式）
 		if (InitSockEnv() == FALSE) {         // 初始化Socket环境
 			MessageBox(NULL, _T("无法初始化网络环境，程序即将退出！"), _T("初始化错误"), MB_OK | MB_ICONERROR);

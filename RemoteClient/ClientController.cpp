@@ -160,6 +160,7 @@ void CClientController::threadWatchScreen()
 		}
 		Sleep(1);
 	}
+	TRACE("thread end %d\r\n", m_isClosed);  // 输出调试信息，显示线程结束时m_isClosed变量的值，用于调试跟踪线程关闭状态相关情况
 }
 
 void CClientController::threadWatchScreen(void* arg)
