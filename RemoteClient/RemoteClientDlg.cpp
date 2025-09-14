@@ -187,14 +187,14 @@ HCURSOR CRemoteClientDlg::OnQueryDragIcon()  // 查询拖动图标函数
 
 void CRemoteClientDlg::OnBnClickedBtnTest()  // 测试按钮点击事件处理函数
 {
-	CClientController::getInstance()->SendCommandPacket(1981);  // 获取CClientController类的单例对象，并调用其SendCommandPacket方法，传入命令值1981
+	CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 1981);  // 获取CClientController类的单例对象，并调用其SendCommandPacket方法，传入命令值1981
 }
 
 
 void CRemoteClientDlg::OnBnClickedBtnFileinfo()  // 文件信息按钮点击事件处理函数
 {
 	std::list<CPacket> lstPackets;                      // 定义一个存储 CPacket 类型对象的链表
-	int ret = CClientController::getInstance()->SendCommandPacket(1, true, NULL, 0, &lstPackets);  // 调用单例类 CClientController 的 SendCommandPacket 方法发送命令包，将结果存入 ret
+	int ret = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 1, true, NULL, 0);  // 调用单例类 CClientController 的 SendCommandPacket 方法发送命令包，将结果存入 ret
 	if (ret == -1 || (lstPackets.size() <= 0)) {        // 判断命令是否处理失败（返回值为 -1 或者链表中没有数据包）
 		AfxMessageBox(_T("命令处理失败!!!"));           // 弹出提示命令处理失败的消息框
 		return;                                         // 函数返回
@@ -227,7 +227,7 @@ void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 	HTREEITEM hTree = m_Tree.GetSelectedItem();  // 获取目录树选中项
 	CString strPath = GetPath(hTree);  // 获取选中项路径
 	m_List.DeleteAllItems();  // 清空文件列表
-	int nCmd = CClientController::getInstance()->SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());  // 发送获取目录信息命令
+	int nCmd = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());  // 发送获取目录信息命令
 	PFILEINFO pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取文件信息
 	while (pInfo->HasNext) {  // 循环处理所有文件信息
 		TRACE("[%s] isdir %d\r\n", pInfo->szFileName, pInfo->IsDirectory);  // 输出文件信息
@@ -256,7 +256,7 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 	m_List.DeleteAllItems();  // 清空文件列表
 	CString strPath = GetPath(hTreeSelected);  // 获取选中项路径
 	std::list<CPacket> lstPackets;                      // 定义存储CPacket对象的链表
-	int nCmd = CClientController::getInstance()->SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), &lstPackets);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
+	int nCmd = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
 	if (lstPackets.size() > 0) {                        // 判断链表中是否有数据包
 		TRACE("lstPackets.size = %d\r\n", lstPackets.size());  // 输出调试信息，显示lstPackets链表的元素个数
 		std::list<CPacket>::iterator it = lstPackets.begin();  // 获取链表起始迭代器
@@ -360,7 +360,7 @@ void CRemoteClientDlg::OnDeleteFile()  // 删除文件命令处理函数
 	int nSelected = m_List.GetSelectionMark();  // 获取文件列表选中项
 	CString strFile = m_List.GetItemText(nSelected, 0);  // 获取选中文件名
 	strFile = strPath + strFile;  // 拼接完整文件路径
-	int ret = CClientController::getInstance()->SendCommandPacket(9, true, (BYTE*)(LPCSTR)strFile, strFile.GetLength());  // 发送删除文件命令
+	int ret = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 9, true, (BYTE*)(LPCSTR)strFile, strFile.GetLength());  // 发送删除文件命令
 	if (ret < 0) {  // 命令执行失败
 		AfxMessageBox("删除文件命令执行失败！！！");  // 显示错误消息
 	}
@@ -375,7 +375,7 @@ void CRemoteClientDlg::OnRunFile()  // 运行文件命令处理函数
 	int nSelected = m_List.GetSelectionMark();  // 获取文件列表选中项
 	CString strFile = m_List.GetItemText(nSelected, 0);  // 获取选中文件名
 	strFile = strPath + strFile;  // 拼接完整文件路径
-	int ret = CClientController::getInstance()->SendCommandPacket(3, true, (BYTE*)(LPCSTR)strFile, strFile.GetLength());  // 发送运行文件命令
+	int ret = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 3, true, (BYTE*)(LPCSTR)strFile, strFile.GetLength());  // 发送运行文件命令
 	if (ret < 0) {  // 命令执行失败
 		AfxMessageBox("打开文件命令执行失败！！！");  // 显示错误消息
 	}

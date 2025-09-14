@@ -74,31 +74,11 @@ LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam
 	return m_watchDlg.DoModal();
 }
 
-int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData, size_t nLength, std::list<CPacket>* plstPacks)
+bool CClientController::SendCommandPacket(HWND hWnd, int nCmd, bool bAutoClose, BYTE* pData, size_t nLength)
 {
 	TRACE("cmd: %d %s start %lld \r\n", nCmd, __FUNCTION__, GetTickCount64());
-	// 打印当前函数名（__FUNCTION__）以及调用 GetTickCount64() 获取的当前系统启动后的毫秒数（64位），用于调试时记录函数开始执行的时间点
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	// 创建一个事件对象，参数依次为：安全属性（NULL 表示默认安全属性）、
-	// 手动重置（TRUE，即事件被触发后需手动调用 ResetEvent 重置）、
-	// 初始状态为未触发（FALSE）、事件名称（NULL 表示无名称）
-	// 
-	//TODO:不应该直接发送 而是投入队列
-
-	std::list<CPacket> lstPacks;  // 定义一个CPacket类型的列表lstPacks，用于存储应答结果包
-	if (plstPacks == NULL) // 如果 plstPacks 指针为 NULL（空指针）
-		plstPacks = &lstPacks; // 将 plstPacks 指向 lstPacks（把 lstPacks 的地址赋值给 plstPacks）
-	pClient->SendPacket(CPacket(nCmd, pData, nLength, hEvent), *plstPacks, bAutoClose);
-	// 调用 pClient 指向的对象的 SendPacket 方法，发送由 nCmd、pData、nLength、hEvent 构造的 CPacket 数据包，
-	// 并将应答结果存入 lstPacks 中	
-	CloseHandle(hEvent);//回收事件句柄，防止资源耗尽
-	if (plstPacks->size() > 0) { // 如果 plstPacks 指向的容器中元素数量大于 0
-		TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
-		return plstPacks->front().sCmd; // 返回容器中第一个元素的 sCmd 成员
-	}
-	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
-	return -1;  // 返回cmd
+	return pClient->SendPacket(hWnd, CPacket(nCmd, pData, nLength), bAutoClose);  // 调用pClient对象的SendPacket方法，发送一个CPacket数据包，参数包括窗口句柄hWnd、构造的CPacket对象（包含命令nCmd、数据指针pData、数据长度nLength）以及自动关闭标志bAutoClose	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
 }
 
 int CClientController::DownFile(CString strPath)
@@ -144,7 +124,9 @@ void CClientController::threadWatchScreen()
 	{
 		if (m_watchDlg.isFull() == false) {  // 如果远程对话框未处于“满”的状态
 			std::list<CPacket> lstPacks; // 定义存储 CPacket 类型对象的列表 lstPacks
-			int ret = SendCommandPacket(6, true, NULL, 0, &lstPacks); // 调用 SendCommandPacket 函数发送命令包，结果存入 ret，应答包存入 lstPacks
+			int ret = SendCommandPacket(m_watchDlg.GetSafeHwnd(), 6, true, NULL, 0);  // 调用SendCommandPacket函数，向m_watchDlg对应的窗口发送命令数据包，参数分别为窗口句柄、命令标识6、自动相关标志true、数据指针NULL、数据长度0，返回值存入ret
+			//TODO:添加消息响应函数WM_SEND_PACK_ACK  // 待办：添加对WM_SEND_PACK_ACK消息的响应函数
+			//TODO:控制发送频率  // 待办：实现发送频率的控制逻辑
 			if (ret == 6) { // 如果返回值 ret 为 6
 
 				if (CEdoyunTool::Bytes2Image(m_watchDlg.GetImage(), lstPacks.front().strData) == 0) { // 调用 Bytes2Image 函数将数据转为图像，若成功（返回 0）
@@ -181,7 +163,7 @@ void CClientController::threadDownloadFile() {
 	}
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 	do {
-		int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength());  // 调用SendCommandPacket方法发送命令（命令码为4）、指定不自动关闭（false）、将m_strRemote转换为BYTE*类型的远程路径数据、数据长度为m_strRemote的长度，获取返回值ret
+		int ret = SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength());  // 调用SendCommandPacket方法发送命令（命令码为4）、指定不自动关闭（false）、将m_strRemote转换为BYTE*类型的远程路径数据、数据长度为m_strRemote的长度，获取返回值ret
 		long long nLength = *(long long*)pClient->GetPacket().strData.c_str();  // 获取文件长度
 		if (nLength == 0) {  // 文件长度为零
 			AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 显示错误消息

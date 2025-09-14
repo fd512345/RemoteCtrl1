@@ -9,12 +9,13 @@
 #pragma pack(push)                           // ±£´æµ±Ç°ÄÚ´æ¶ÔÆë·½Ê½
 #pragma pack(1)                              // ÉèÖÃÄÚ´æ¶ÔÆëÎª1×Ö½Ú£¨½ô´Õ¶ÔÆë£©
 #define WM_SEND_PACK (WM_USER+1)  // ·¢ËÍ°üÊı¾İ
+#define WM_SEND_PACK_ACK (WM_USER+2)//·¢ËÍ°üÊı¾İÓ¦´ğ
 
 class CPacket                                // Êı¾İ°üÀà£¬ÓÃÓÚ·â×°ºÍ½âÎöÍøÂç´«ÊäµÄÊı¾İ
 {
 public:
 	CPacket() :sHead(0), nLength(0), sCmd(0), sSum(0) {}  // Ä¬ÈÏ¹¹Ôìº¯Êı£¬³õÊ¼»¯³ÉÔ±±äÁ¿
-	CPacket(WORD nCmd, const BYTE* pData, size_t nSize, HANDLE hEvent) {  // ´ø²ÎÊı¹¹Ôìº¯Êı£¬ÓÃÓÚ´´½¨·¢ËÍµÄÊı¾İ°ü
+	CPacket(WORD nCmd, const BYTE* pData, size_t nSize) {  // ´ø²ÎÊı¹¹Ôìº¯Êı£¬ÓÃÓÚ´´½¨·¢ËÍµÄÊı¾İ°ü
 		sHead = 0xFEFF;                       // ÉèÖÃ¹Ì¶¨°üÍ·±êÊ¶
 		nLength = nSize + 4;                  // ¼ÆËãÊı¾İ³¤¶È£¨°üº¬ÃüÁîºÍĞ£ÑéºÍµÄ4×Ö½Ú£©
 		sCmd = nCmd;                          // ÉèÖÃÃüÁîºÅ
@@ -30,7 +31,6 @@ public:
 		{
 			sSum += BYTE(strData[j]) & 0xFF;
 		}
-		this->hEvent = hEvent;
 	}
 	CPacket(const CPacket& pack) {            // ¿½±´¹¹Ôìº¯Êı£¬¸´ÖÆÊı¾İ°üÄÚÈİ
 		sHead = pack.sHead;
@@ -38,9 +38,8 @@ public:
 		sCmd = pack.sCmd;
 		strData = pack.strData;
 		sSum = pack.sSum;
-		hEvent = pack.hEvent;
 	}
-	CPacket(const BYTE* pData, size_t& nSize) : hEvent(INVALID_HANDLE_VALUE) {  // ´Ó×Ö½ÚÁ÷½âÎöÊı¾İ°üµÄ¹¹Ôìº¯Êı
+	CPacket(const BYTE* pData, size_t& nSize) {  // ´Ó×Ö½ÚÁ÷½âÎöÊı¾İ°üµÄ¹¹Ôìº¯Êı
 		size_t i = 0;
 		for (; i < nSize; i++) {              // ²éÕÒ°üÍ·±êÊ¶0xFEFF
 			if (*(WORD*)(pData + i) == 0xFEFF) {
@@ -85,7 +84,6 @@ public:
 			sCmd = pack.sCmd;
 			strData = pack.strData;
 			sSum = pack.sSum;
-			hEvent = pack.hEvent;
 		}
 		return *this;
 	}
@@ -110,7 +108,6 @@ public:
 	std::string strData;                      // Êı¾İÄÚÈİ£¨¿É±ä³¤¶È£©
 	WORD sSum;                                // Ğ£ÑéºÍ£¨Êı¾İ²¿·ÖµÄ×Ö½ÚºÍ£¬2×Ö½Ú£©
 	//std::string strOut;                       // ÓÃÓÚ´æ´¢ĞòÁĞ»¯ºóµÄÊä³öÊı¾İ
-	HANDLE hEvent;                           // ÊÂ¼ş¾ä±ú£¨ÓÃÓÚÍ¬²½²Ù×÷£©
 };
 #pragma pack(pop)                            // »Ö¸´Ö®Ç°µÄÄÚ´æ¶ÔÆë·½Ê½
 
@@ -138,6 +135,39 @@ typedef struct file_info {                   // ÎÄ¼şĞÅÏ¢½á¹¹Ìå£¬ÓÃÓÚ´«ÊäÎÄ¼ş/Ä¿Â
 	BOOL HasNext;                             // ºóĞøĞÅÏ¢±êÊ¶£¨4×Ö½Ú£©
 	char szFileName[256];                     // ÎÄ¼şÃû£¨256×Ö½Ú£©
 }FILEINFO, * PFILEINFO;
+
+
+enum {
+	CSM_AUTOCLOSE = 1,  // CSM = Client Socket Mode ×Ô¶¯¹Ø±ÕÄ£Ê½
+};
+
+
+typedef struct PacketData {
+	std::string strData;  // ´æ´¢Êı¾İ°üµÄ×Ö·û´®Êı¾İ
+	UINT nMode;  // Êı¾İ°üµÄÄ£Ê½
+
+	// ¹¹Ôìº¯Êı£¬´Ó×Ö½ÚÊı¾İ´´½¨PacketData¶ÔÏó
+	PacketData(const char* pData, size_t nLen, UINT mode) {
+		strData.resize(nLen);  // µ÷ÕûstrData´óĞ¡ÒÔÈİÄÉnLen³¤¶ÈµÄÊı¾İ
+		memcpy((char*)strData.c_str(), pData, nLen);  // ½«pDataÖĞµÄÊı¾İ¸´ÖÆµ½strData
+		nMode = mode;  // ÉèÖÃÄ£Ê½
+	}
+
+	// ¿½±´¹¹Ôìº¯Êı£¬ÓÃÓÚ¸´ÖÆPacketData¶ÔÏó
+	PacketData(const PacketData& data) {
+		strData = data.strData;  // ¸´ÖÆ×Ö·û´®Êı¾İ
+		nMode = data.nMode;  // ¸´ÖÆÄ£Ê½
+	}
+
+	// ¸³ÖµÔËËã·ûÖØÔØ£¬ÓÃÓÚPacketData¶ÔÏóÖ®¼äµÄ¸³Öµ
+	PacketData& operator=(const PacketData& data) {
+		if (this != &data) {  // ±ÜÃâ×Ô¸³Öµ
+			strData = data.strData;  // ¸´ÖÆ×Ö·û´®Êı¾İ
+			nMode = data.nMode;  // ¸´ÖÆÄ£Ê½
+		}
+		return *this;  // ·µ»Ø×ÔÉíÒıÓÃÒÔÖ§³ÖÁ´Ê½¸³Öµ
+	}
+}PACKET_DATA;
 
 std::string GetErrInfo(int wsaErrCode);      // ÉùÃ÷»ñÈ¡WSA´íÎóĞÅÏ¢µÄº¯Êı
 void Dump(BYTE* pData, size_t nSize);        // ÉùÃ÷¶ş½øÖÆÊı¾İ´òÓ¡º¯Êı£¨µ÷ÊÔÓÃ£©
@@ -181,7 +211,8 @@ public:
 		return -1;                            // ½âÎöÊ§°Ü·µ»Ø-1
 	}
 
-	bool SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed = true);
+	//bool SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed = true);
+	bool SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed = true);
 	bool GetFilePath(std::string& strPath) {  // »ñÈ¡Êı¾İ°üÖĞµÄÎÄ¼şÂ·¾¶£¨Õë¶ÔÌØ¶¨ÃüÁî£©
 		if ((m_packet.sCmd >= 2) && (m_packet.sCmd <= 4)) {  // ÃüÁî2-4°üº¬ÎÄ¼şÂ·¾¶
 			strPath = m_packet.strData;
@@ -210,6 +241,7 @@ public:
 		}
 	}
 private:
+	UINT m_nThreadID;
 	typedef void(CClientSocket::* MSGFUNC)(UINT nMsg, WPARAM wParam, LPARAM lParam);  // ¶¨ÒåÖ¸ÏòCClientControllerÀà³ÉÔ±º¯ÊıµÄÖ¸ÕëÀàĞÍMSGFUNC£¬¸Ã³ÉÔ±º¯Êı½ÓÊÕUINT¡¢WPARAM¡¢LPARAMÀàĞÍ²ÎÊı£¬·µ»ØLRESULT
 	std::map<UINT, MSGFUNC> m_mapFunc;
 	HANDLE m_hThread;
@@ -225,46 +257,16 @@ private:
 	SOCKET m_sock;                            // Socket¾ä±ú
 	CPacket m_packet;                         // µ±Ç°´¦ÀíµÄÊı¾İ°ü
 	CClientSocket& operator=(const CClientSocket& ss) {}  // ½ûÓÃ¸³ÖµÔËËã·û
-	CClientSocket(const CClientSocket& ss) {  // ½ûÓÃ¿½±´¹¹Ôìº¯Êı
-		m_hThread = INVALID_HANDLE_VALUE;
-		m_bAutoClose = ss.m_bAutoClose;
-		m_sock = ss.m_sock;
-		m_nIP = ss.m_nIP;
-		m_nPort = ss.m_nPort;
-		struct {
-			UINT message;  // ÏûÏ¢ÀàĞÍ£¬ÓÃÓÚ±êÊ¶²»Í¬µÄÏûÏ¢
-			MSGFUNC func;  // º¯ÊıÖ¸Õë£¬ÓÃÓÚ´¦Àí¶ÔÓ¦ÏûÏ¢
-		} funcs[] = {
-			{WM_SEND_PACK, &CClientSocket::SendPack},
-			// {WM_SEND_PACK, /* ¿ÉÌí¼Ó¸ü¶àÏûÏ¢Óë´¦Àíº¯ÊıµÄ¶ÔÓ¦Ïî */},
-			{0,NULL}
-		};
-		for (int i = 0; funcs[i].message != 0; i++) {  // ±éÀúfuncsÊı×é£¬Ö±µ½Óöµ½messageÎª0µÄÔªËØ
-			// Ïòm_mapFuncÖĞ²åÈë¼üÖµ¶Ô£¨funcs[i].messageÎª¼ü£¬funcs[i].funcÎªÖµ£©£¬Èô²åÈëÊ§°Ü£¨¼´¸Ã¼üÒÑ´æÔÚ£©
-			if (m_mapFunc.insert(std::pair<UINT, MSGFUNC>(funcs[i].message, funcs[i].func)).second == false) {
-				// Êä³öµ÷ÊÔĞÅÏ¢£¬ÌáÊ¾²åÈëÊ§°Ü£¬²¢ÏÔÊ¾Ïà¹ØµÄÏûÏ¢Öµ¡¢º¯ÊıÖµºÍĞòºÅ
-				TRACE("²åÈëÊ§°Ü£¬ÏûÏ¢Öµ£º%d º¯ÊıÖµ:%08X ĞòºÅ:%d\r\n", funcs[i].message, funcs[i].func, i);
-			}
-		}
-
-	}
-	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SOCKET), m_bAutoClose(true), m_hThread(INVALID_HANDLE_VALUE)
-	{// Ë½ÓĞ¹¹Ôìº¯Êı£¨µ¥ÀıÄ£Ê½£©
-		if (InitSockEnv() == FALSE) {         // ³õÊ¼»¯Socket»·¾³
-			MessageBox(NULL, _T("ÎŞ·¨³õÊ¼»¯ÍøÂç»·¾³£¬³ÌĞò¼´½«ÍË³ö£¡"), _T("³õÊ¼»¯´íÎó"), MB_OK | MB_ICONERROR);
-			exit(0);
-		}
-		m_buffer.resize(BUFFER_SIZE);         // ³õÊ¼»¯»º³åÇø´óĞ¡
-		memset(m_buffer.data(), 0, BUFFER_SIZE);  // Çå¿Õ»º³åÇø
-	}
+	CClientSocket(const CClientSocket& ss);
+	CClientSocket();
 	~CClientSocket() {                        // Îö¹¹º¯Êı
 		closesocket(m_sock);                  // ¹Ø±ÕSocket
 		m_sock = INVALID_SOCKET;              // ±ê¼ÇÎªÎŞĞ§
 		WSACleanup();                         // ÇåÀíSocket»·¾³
 	}
 
-	static void threadEntry(void* arg); // Ïß³ÌÈë¿Úº¯Êı£¬¾²Ì¬³ÉÔ±º¯Êı£¬½ÓÊÕ void* ÀàĞÍ²ÎÊı
-	void threadFunc(); // Ïß³ÌÖ´ĞĞµÄ¹¦ÄÜº¯Êı
+	static unsigned __stdcall threadEntry(void* arg); // Ïß³ÌÈë¿Úº¯Êı£¬¾²Ì¬³ÉÔ±º¯Êı£¬½ÓÊÕ void* ÀàĞÍ²ÎÊı
+	//void threadFunc(); // Ïß³ÌÖ´ĞĞµÄ¹¦ÄÜº¯Êı
 	void threadFunc2();
 
 	BOOL InitSockEnv() {                      // ³õÊ¼»¯Winsock»·¾³
