@@ -258,6 +258,7 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 	std::list<CPacket> lstPackets;                      // 定义存储CPacket对象的链表
 	int nCmd = CClientController::getInstance()->SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), &lstPackets);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
 	if (lstPackets.size() > 0) {                        // 判断链表中是否有数据包
+		TRACE("lstPackets.size = %d\r\n", lstPackets.size());  // 输出调试信息，显示lstPackets链表的元素个数
 		std::list<CPacket>::iterator it = lstPackets.begin();  // 获取链表起始迭代器
 		for (; it != lstPackets.end(); it++) {           // 遍历链表
 			PFILEINFO pInfo = (PFILEINFO)(*it).strData.c_str();  // 将数据包字符串数据转为PFILEINFO指针

@@ -146,15 +146,19 @@ void CClientSocket::threadFunc()
 					else if (length <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
 						CloseSocket(); // 关闭套接字
 						SetEvent(head.hEvent);//等到服务器关闭命令之后 再通知事件完成
-						m_mapAutoClosed.erase(it0);
-						TRACE("SetEvent %d %d\r\n", head.sCmd, it0->second);
-						break;
+						if (it0 != m_mapAutoClosed.end()) {    // 判断迭代器it0是否未指向m_mapAutoClosed的末尾（即是否找到对应元素）
+							TRACE("SetEvent %d %d\r\n", head.sCmd, it0->second);  // 输出调试信息，显示命令和对应的值
+						}
+						else {
+							TRACE("异常的情况，没有对应的pair\r\n");  // 输出异常情况的调试信息，表明没有找到对应的键值对
+						}
 					}
 				} while (it0->second == false);
 			}
 
 			m_lock.lock();
 			m_lstSend.pop_front(); // 从待发送列表中移除已处理的数据包
+			m_mapAutoClosed.erase(head.hEvent);        // 从m_mapAutoClosed中删除it0指向的元素
 			m_lock.unlock();
 			if (InitSocket() == false)
 				InitSocket();
@@ -163,6 +167,17 @@ void CClientSocket::threadFunc()
 	}
 	CloseSocket(); // 关闭套接字连接
 }
+void CClientSocket::threadFunc2()
+{
+	MSG msg;
+	while (::GetMessage(&msg, NULL, 0, 0)) {  // 获取消息，若获取到有效消息则进入循环
+		TranslateMessage(&msg);  // 转换消息（将虚拟键消息转换为字符消息）
+		DispatchMessage(&msg);   // 分发消息（将消息发送到窗口过程处理）
+		if (m_mapFunc.find(msg.message) != m_mapFunc.end()) {  // 在m_mapFunc中查找当前消息对应的处理函数，若找到（即迭代器不等于end()）
+			(this->*m_mapFunc[msg.message])(msg.message, msg.wParam, msg.lParam);  // 调用找到的成员函数处理该消息
+		}
+	}
+}
 bool CClientSocket::Send(const CPacket& pack)
 {                // 发送数据包
 	TRACE("m_sock = %d\r\n", m_sock);     // 调试输出Socket句柄
@@ -170,4 +185,21 @@ bool CClientSocket::Send(const CPacket& pack)
 	std::string strOut;			  // 用于存储序列化后的数据
 	pack.Data(strOut);                  // 序列化数据包
 	return send(m_sock, strOut.c_str(), strOut.size(), 0) > 0;  // 发送序列化后的数据包
+}
+
+void CClientSocket::SendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
+{//TODO:定义一个消息的数据结构（数据和数据长度，模式） 回调消息的数据结构（HWND MESSAGE）
+	if (InitSocket() == true) {  // 初始化套接字成功
+		int ret = send(m_sock, (char*)wParam, (int)lParam, 0);  // 调用send函数发送数据
+		if (ret > 0) {  // 发送成功（发送字节数大于0）
+			// 可在此处添加发送成功后的逻辑，比如打印发送成功日志等
+		}
+		else {  // 发送失败
+			CloseSocket();  // 关闭套接字
+			//网络终止处理
+		}
+	}
+	else {  // 初始化套接字失败
+		//TODO:错误处理，比如弹出错误提示、记录错误日志等
+	}
 }

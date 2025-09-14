@@ -8,6 +8,8 @@
 #include <mutex>
 #pragma pack(push)                           // 保存当前内存对齐方式
 #pragma pack(1)                              // 设置内存对齐为1字节（紧凑对齐）
+#define WM_SEND_PACK (WM_USER+1)  // 发送包数据
+
 class CPacket                                // 数据包类，用于封装和解析网络传输的数据
 {
 public:
@@ -208,6 +210,8 @@ public:
 		}
 	}
 private:
+	typedef void(CClientSocket::* MSGFUNC)(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 定义指向CClientController类成员函数的指针类型MSGFUNC，该成员函数接收UINT、WPARAM、LPARAM类型参数，返回LRESULT
+	std::map<UINT, MSGFUNC> m_mapFunc;
 	HANDLE m_hThread;
 	bool m_bAutoClose;
 	std::mutex m_lock;
@@ -222,10 +226,27 @@ private:
 	CPacket m_packet;                         // 当前处理的数据包
 	CClientSocket& operator=(const CClientSocket& ss) {}  // 禁用赋值运算符
 	CClientSocket(const CClientSocket& ss) {  // 禁用拷贝构造函数
+		m_hThread = INVALID_HANDLE_VALUE;
 		m_bAutoClose = ss.m_bAutoClose;
 		m_sock = ss.m_sock;
 		m_nIP = ss.m_nIP;
 		m_nPort = ss.m_nPort;
+		struct {
+			UINT message;  // 消息类型，用于标识不同的消息
+			MSGFUNC func;  // 函数指针，用于处理对应消息
+		} funcs[] = {
+			{WM_SEND_PACK, &CClientSocket::SendPack},
+			// {WM_SEND_PACK, /* 可添加更多消息与处理函数的对应项 */},
+			{0,NULL}
+		};
+		for (int i = 0; funcs[i].message != 0; i++) {  // 遍历funcs数组，直到遇到message为0的元素
+			// 向m_mapFunc中插入键值对（funcs[i].message为键，funcs[i].func为值），若插入失败（即该键已存在）
+			if (m_mapFunc.insert(std::pair<UINT, MSGFUNC>(funcs[i].message, funcs[i].func)).second == false) {
+				// 输出调试信息，提示插入失败，并显示相关的消息值、函数值和序号
+				TRACE("插入失败，消息值：%d 函数值:%08X 序号:%d\r\n", funcs[i].message, funcs[i].func, i);
+			}
+		}
+
 	}
 	CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SOCKET), m_bAutoClose(true), m_hThread(INVALID_HANDLE_VALUE)
 	{// 私有构造函数（单例模式）
@@ -244,6 +265,7 @@ private:
 
 	static void threadEntry(void* arg); // 线程入口函数，静态成员函数，接收 void* 类型参数
 	void threadFunc(); // 线程执行的功能函数
+	void threadFunc2();
 
 	BOOL InitSockEnv() {                      // 初始化Winsock环境
 		WSADATA data;
@@ -266,7 +288,7 @@ private:
 		return send(m_sock, pData, nSize, 0) > 0;  // 发送数据，返回是否成功
 	}
 	bool Send(const CPacket& pack);
-
+	void SendPack(UINT nMsg, WPARAM wParam/*缓冲区的值*/, LPARAM lParam/*缓冲区的长度*/);  // 声明一个函数，返回值为LRESULT类型，函数名为SendPack，接收三个参数：无符号整型nMsg，WPARAM类型的wParam，LPARAM类型的lParam，用于发送数据包等相关操作
 	static CClientSocket* m_instance;         // 单例实例指针
 	class CHelper {                           // 辅助类，用于自动释放单例
 	public:
