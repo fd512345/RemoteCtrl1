@@ -89,7 +89,7 @@ int CClientController::SendCommandPacket(int nCmd, bool bAutoClose, BYTE* pData,
 	std::list<CPacket> lstPacks;  // 定义一个CPacket类型的列表lstPacks，用于存储应答结果包
 	if (plstPacks == NULL) // 如果 plstPacks 指针为 NULL（空指针）
 		plstPacks = &lstPacks; // 将 plstPacks 指向 lstPacks（把 lstPacks 的地址赋值给 plstPacks）
-	pClient->SendPacket(CPacket(nCmd, pData, nLength, hEvent), *plstPacks);
+	pClient->SendPacket(CPacket(nCmd, pData, nLength, hEvent), *plstPacks, bAutoClose);
 	// 调用 pClient 指向的对象的 SendPacket 方法，发送由 nCmd、pData、nLength、hEvent 构造的 CPacket 数据包，
 	// 并将应答结果存入 lstPacks 中	
 	CloseHandle(hEvent);//回收事件句柄，防止资源耗尽

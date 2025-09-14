@@ -193,13 +193,14 @@ void CRemoteClientDlg::OnBnClickedBtnTest()  // 测试按钮点击事件处理�
 
 void CRemoteClientDlg::OnBnClickedBtnFileinfo()  // 文件信息按钮点击事件处理函数
 {
-	int ret = CClientController::getInstance()->SendCommandPacket(1);  // 发送获取文件信息命令
-	if (ret == -1) {  // 命令处理失败
-		AfxMessageBox(_T("命令处理失败!!!"));  // 显示错误消息
-		return;  // 返回
+	std::list<CPacket> lstPackets;                      // 定义一个存储 CPacket 类型对象的链表
+	int ret = CClientController::getInstance()->SendCommandPacket(1, true, NULL, 0, &lstPackets);  // 调用单例类 CClientController 的 SendCommandPacket 方法发送命令包，将结果存入 ret
+	if (ret == -1 || (lstPackets.size() <= 0)) {        // 判断命令是否处理失败（返回值为 -1 或者链表中没有数据包）
+		AfxMessageBox(_T("命令处理失败!!!"));           // 弹出提示命令处理失败的消息框
+		return;                                         // 函数返回
 	}
-	CClientSocket* pClient = CClientSocket::getInstance();  // 获取客户端套接字实例
-	std::string drivers = pClient->GetPacket().strData;  // 获取驱动信息
+	CPacket& head = lstPackets.front();                 // 获取链表的第一个元素（头元素）的引用
+	std::string drivers = head.strData;                 // 从头部数据包中获取字符串数据存入 drivers	
 	std::string dr;
 	m_Tree.DeleteAllItems();  // 清空目录树
 	for (size_t i = 0; i < drivers.size(); i++)  // 遍历驱动信息
@@ -232,7 +233,7 @@ void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 		TRACE("[%s] isdir %d\r\n", pInfo->szFileName, pInfo->IsDirectory);  // 输出文件信息
 		if (!pInfo->IsDirectory) {  // 如果是文件
 			m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
-		} 
+		}
 		int cmd = CClientController::getInstance()->DealCommand();  // 处理命令响应
 		TRACE("ack:%d\r\n", cmd);  // 输出响应命令
 		if (cmd < 0)break;  // 响应错误则跳出循环
@@ -254,34 +255,28 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 	DeleteTreeChildrenItem(hTreeSelected);  // 删除子项
 	m_List.DeleteAllItems();  // 清空文件列表
 	CString strPath = GetPath(hTreeSelected);  // 获取选中项路径
-	int nCmd = CClientController::getInstance()->SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());  // 发送获取目录信息命令
-	PFILEINFO pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取文件信息
-	int Count = 0;
-	while (pInfo->HasNext) {  // 循环处理所有文件信息
-		TRACE("[%s] isdir %d\r\n", pInfo->szFileName, pInfo->IsDirectory);  // 输出文件信息
-		if (pInfo->IsDirectory) {  // 如果是目录
-			if (CString(pInfo->szFileName) == "." || (CString(pInfo->szFileName) == ".."))  // 跳过当前目录和父目录
-			{
-				int cmd = CClientController::getInstance()->DealCommand();  // 处理命令响应
-				TRACE("ack:%d\r\n", cmd);  // 输出响应命令
-				if (cmd < 0)break;  // 响应错误则跳出循环
-				pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取下一个文件信息
-				continue;  // 继续下一次循环
+	std::list<CPacket> lstPackets;                      // 定义存储CPacket对象的链表
+	int nCmd = CClientController::getInstance()->SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), &lstPackets);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
+	if (lstPackets.size() > 0) {                        // 判断链表中是否有数据包
+		std::list<CPacket>::iterator it = lstPackets.begin();  // 获取链表起始迭代器
+		for (; it != lstPackets.end(); it++) {           // 遍历链表
+			PFILEINFO pInfo = (PFILEINFO)(*it).strData.c_str();  // 将数据包字符串数据转为PFILEINFO指针
+			if (pInfo->HasNext == false)
+				continue;
+			if (pInfo->IsDirectory) {  // 如果是目录
+				if (CString(pInfo->szFileName) == "." || (CString(pInfo->szFileName) == ".."))  // 跳过当前目录和父目录
+				{
+					continue;  // 继续下一次循环
+				}
+				HTREEITEM hTemp = m_Tree.InsertItem(pInfo->szFileName, hTreeSelected, TVI_LAST);  // 插入目录节点
+				m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
 			}
-			HTREEITEM hTemp = m_Tree.InsertItem(pInfo->szFileName, hTreeSelected, TVI_LAST);  // 插入目录节点
-			m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
+			else {  // 如果是文件
+				m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
+			}
 		}
-		else {  // 如果是文件
-			m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
-		}
-		Count++;  // 计数加一
-		int cmd = CClientController::getInstance()->DealCommand();  // 处理命令响应
-		//TRACE("ack:%d\r\n", cmd);
-		if (cmd < 0)break;  // 响应错误则跳出循环
-		pInfo = (PFILEINFO)CClientSocket::getInstance()->GetPacket().strData.c_str();  // 获取下一个文件信息
 	}
-	//CClientController::getInstance()->CloseSocket();  // 关闭套接字
-	TRACE("Count = %d\r\n", Count);  // 输出文件数量
+
 }
 
 CString CRemoteClientDlg::GetPath(HTREEITEM hTree)  // 获取目录树项的路径

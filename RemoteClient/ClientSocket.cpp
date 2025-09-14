@@ -45,13 +45,14 @@ bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks
 		// 线程栈大小为 0（使用默认栈大小），传递当前对象（this 指针）作为线程函数的参数
 
 	}
-	auto pr = m_mapAck.insert(std::pair<HANDLE, std::list<CPacket>>(pack.hEvent, lstPacks));
+	auto pr = m_mapAck.insert(std::pair<HANDLE, std::list<CPacket>&>(pack.hEvent, lstPacks));
 	m_mapAutoClosed.insert(std::pair<HANDLE, bool>(pack.hEvent, isAutoClosed));
 	// 向 m_mapAck 中插入一个键为 head.hEvent（HANDLE 类型）、值为空 lstPacks
 	// auto 用于自动推导 pr 的类型（std::pair<std::map<HANDLE, std::list<CPacket>>::iterator, bool>）
+	TRACE("cmd:%d event: %08X\r\n", pack.sCmd, pack.hEvent);  // 输出调试信息，格式为“cmd:命令值 event 事件句柄的8位十六进制值”，用于调试跟踪命令和事件相关信息
 	m_lstSend.push_back(pack); // 将数据包 pack 加入待发送队列 m_lstSend
 	WaitForSingleObject(pack.hEvent, INFINITE); // 无限等待 pack 对应的事件对象
-	std::map<HANDLE, std::list<CPacket>>::iterator it;
+	std::map<HANDLE, std::list<CPacket>&>::iterator it;
 	it = m_mapAck.find(pack.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
 
 	if (it != m_mapAck.end()) { // 如果找到对应的键值对
@@ -82,40 +83,45 @@ void CClientSocket::threadFunc()
 
 				continue; // 继续循环，尝试后续操作或再次发送
 			}
-			std::map<HANDLE, std::list<CPacket>>::iterator it;
+			std::map<HANDLE, std::list<CPacket>&>::iterator it;
 			it = m_mapAck.find(head.hEvent); // 在 m_mapAck 中查找 pack.hEvent 对应的键值对
-			std::map<HANDLE, bool>::iterator it0 = m_mapAutoClosed.find(head.hEvent);
-			// 在 m_mapAutoClosed 这个 std::map 容器中，查找键为 head.hEvent 的键值对，
-			// 并将找到的迭代器（若存在）或 end() 迭代器赋值给 it0
-			do
-			{
-				int length = recv(m_sock, pBuffer + index, BUFFER_SIZE - index, 0);
-				if (length > 0 || index > 0) {
-					index += length; // 累加接收数据的长度到索引，方便后续处理
-					size_t size = (size_t)index; // 将索引转换为 size_t 类型，用于表示数据大小
-					CPacket pack((BYTE*)pBuffer, size); // 用接收到的数据和大小构造 CPacket 对象
-					if (size > 0) { // 如果有有效数据
-						// 向 m_mapAck 中键为 head.hEvent 的对应值（std::list<CPacket> 类型）中添加数据包 pack				
-						pack.hEvent = head.hEvent; // 将数据包的事件句柄设置为发送数据包的事件句柄
-						it->second.push_back(pack);
-						SetEvent(head.hEvent); // 触发数据包关联的事件，通知数据已准备好
-						memmove(pBuffer, pBuffer + size, index - size);
-						index -= size;
-						if (it0->second)
-						{
-							SetEvent(head.hEvent);
+			if (it != m_mapAck.end()) {    // 判断迭代器it是否未指向m_mapAck的末尾（即是否找到对应元素）
+				std::map<HANDLE, bool>::iterator it0 = m_mapAutoClosed.find(head.hEvent);
+				// 在 m_mapAutoClosed 这个 std::map 容器中，查找键为 head.hEvent 的键值对，
+				// 并将找到的迭代器（若存在）或 end() 迭代器赋值给 it0
+				do
+				{
+					int length = recv(m_sock, pBuffer + index, BUFFER_SIZE - index, 0);
+					if (length > 0 || index > 0) {
+						index += length; // 累加接收数据的长度到索引，方便后续处理
+						size_t size = (size_t)index; // 将索引转换为 size_t 类型，用于表示数据大小
+						CPacket pack((BYTE*)pBuffer, size); // 用接收到的数据和大小构造 CPacket 对象
+						if (size > 0) { // 如果有有效数据
+							// 向 m_mapAck 中键为 head.hEvent 的对应值（std::list<CPacket> 类型）中添加数据包 pack				
+							pack.hEvent = head.hEvent; // 将数据包的事件句柄设置为发送数据包的事件句柄
+							it->second.push_back(pack);
+							SetEvent(head.hEvent); // 触发数据包关联的事件，通知数据已准备好
+							memmove(pBuffer, pBuffer + size, index - size);
+							index -= size;
+							if (it0->second)
+							{
+								SetEvent(head.hEvent);
+							}
 						}
 					}
-				}
-				else if (length <= 0 && index <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
-					CloseSocket(); // 关闭套接字
-					SetEvent(head.hEvent);//等到服务器关闭命令之后 再通知事件完成
-
-				}
-			} while (it0->second == false);
+					else if (length <= 0 && index <= 0) { // 接收长度小于等于0且索引也小于等于0，说明可能连接有问题
+						CloseSocket(); // 关闭套接字
+						SetEvent(head.hEvent);//等到服务器关闭命令之后 再通知事件完成
+						m_mapAutoClosed.erase(it0);
+						break;
+					}
+				} while (it0->second == false);
+			}
+			
 
 			m_lstSend.pop_front(); // 从待发送列表中移除已处理的数据包
-			InitSocket();
+			if (InitSocket() == false)
+				InitSocket();
 		}
 	}
 	CloseSocket(); // 关闭套接字连接

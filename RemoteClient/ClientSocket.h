@@ -230,7 +230,7 @@ public:
 private:
 	bool m_bAutoClose;
 	std::list<CPacket> m_lstSend; // 定义一个存储 CPacket 类型对象的 std::list 容器 m_lstSend，用于管理待发送的数据包
-	std::map<HANDLE, std::list<CPacket>> m_mapAck;
+	std::map<HANDLE, std::list<CPacket>&> m_mapAck;
 	// 定义一个 std::map 容器 m_mapAck，键为 int 类型，值为存储 CPacket 类型对象的 std::list 容器，用于按整数键关联 CPacket 对象的列表
 	std::map<HANDLE, bool> m_mapAutoClosed;
 	int m_nIP;
