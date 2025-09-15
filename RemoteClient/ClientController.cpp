@@ -33,17 +33,6 @@ int CClientController::Invoke(CWnd*& m_pMainWnd)
 	return m_remoteDlg.DoModal();
 }
 
-LRESULT CClientController::SendMessage(MSG msg)
-{  // 发送消息的成员函数
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);  // 创建事件对象hEvent
-	if (hEvent == NULL) return -2;  // 如果创建失败，返回-2
-	MSGINFO info(msg);  // 用msg构造MSGINFO对象info
-	PostThreadMessage(m_nThreadID, WM_SEND_MESSAGE, (WPARAM)&info, (LPARAM)hEvent);  // 向指定线程发送消息，传递info和hEvent
-	WaitForSingleObject(hEvent, INFINITE);  // 等待事件对象hEvent，直到有信号
-	CloseHandle(hEvent);
-	return info.result;  // 返回info的result值
-}
-
 int CClientController::InitController()
 {
 	m_hThread = (HANDLE)_beginthreadex(  // 调用_beginthreadex创建线程，返回线程句柄并赋值给m_hThread
@@ -118,7 +107,6 @@ int CClientController::DownFile(CString strPath)
 void CClientController::StartWatchScreen()
 {
 	m_isClosed = false;  // 设置标记m_isClosed为false，表示未关闭
-	//m_watchDlg.SetParent(&m_remoteDlg); // 将 m_watchDlg 的父窗口设置为 m_remoteDlg
 	// 创建屏幕监视线程，线程入口函数为CClientController的threadWatchScreen，栈大小为0，传入this指针作为参数
 	m_hThreadWatch = (HANDLE)_beginthread(&CClientController::threadWatchScreen, 0, this);
 	m_watchDlg.DoModal();  // 以模态方式显示对话框dlg
@@ -139,11 +127,8 @@ void CClientController::threadWatchScreen()
 			}
 			nTick = GetTickCount64();  // 更新nTick变量为当前系统启动后的毫秒数（64位无符号长整型），用于后续计时相关的判断或计算
 			int ret = SendCommandPacket(m_watchDlg.GetSafeHwnd(), 6, true, NULL, 0);  // 调用SendCommandPacket函数，向m_watchDlg对应的窗口发送命令数据包，参数分别为窗口句柄、命令标识6、自动相关标志true、数据指针NULL、数据长度0，返回值存入ret
-			//TODO:添加消息响应函数WM_SEND_PACK_ACK  // 待办：添加对WM_SEND_PACK_ACK消息的响应函数
-			//TODO:控制发送频率  // 待办：实现发送频率的控制逻辑
 			if (ret == 1) { // 如果返回值 ret 为 1(true)
 				//TRACE("成功发送图片\r\n");
-
 			}
 			else { // 若 Bytes2Image 函数执行失败
 				TRACE("获取图片失败！ret = %d\r\n", ret); // 打印获取图片失败的调试信息
@@ -162,48 +147,6 @@ void CClientController::threadWatchScreen(void* arg)
 
 }
 
-void CClientController::threadDownloadFile() {
-	FILE* pFile = fopen(m_strLocal, "wb+");  // 以二进制读写方式打开本地文件（路径为m_strLocal）
-	if (pFile == NULL) {  // 如果文件打开失败
-		AfxMessageBox(_T("本地没有权限保存该文件，或者文件无法创建！！！"));  // 弹出提示消息框
-		m_statusDlg.ShowWindow(SW_HIDE);  // 隐藏状态对话框
-		m_remoteDlg.EndWaitCursor();  // 结束等待光标显示
-		return;  // 直接返回，终止函数执行
-	}
-	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	do {
-		int ret = SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength(), (WPARAM)pFile);  // 调用SendCommandPacket方法发送命令（命令码为4）、指定不自动关闭（false）、将m_strRemote转换为BYTE*类型的远程路径数据、数据长度为m_strRemote的长度，获取返回值ret
-		long long nLength = *(long long*)pClient->GetPacket().strData.c_str();  // 获取文件长度
-		if (nLength == 0) {  // 文件长度为零
-			AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 显示错误消息
-			break;  // 跳出循环
-		}
-		long long nCount = 0;
-		while (nCount < nLength) {  // 循环接收文件数据
-			ret = pClient->DealCommand();  // 处理命令响应
-			if (ret < 0) {  // 传输失败
-				AfxMessageBox("传输失败！！");  // 显示错误消息
-				TRACE("传输失败：ret = %d\r\n", ret);  // 输出错误信息
-				break;  // 跳出循环
-			}
-			fwrite(pClient->GetPacket().strData.c_str(), 1, pClient->GetPacket().strData.size(), pFile);  // 写入文件数据
-			nCount += pClient->GetPacket().strData.size();  // 更新已接收数据长度
-		}
-	} while (false);  // do-while循环，由于条件为false，只执行一次循环体
-	fclose(pFile);  // 关闭之前打开的文件指针pFile
-	pClient->CloseSocket();  // 调用pClient的CloseSocket方法关闭套接字
-	m_statusDlg.ShowWindow(SW_HIDE);  // 隐藏状态对话框
-	m_remoteDlg.EndWaitCursor();  // 结束m_remoteDlg的等待光标显示
-	m_remoteDlg.MessageBox(_T("下载完成！！"), _T("完成"));  // 显示下载完成消息
-	m_remoteDlg.LoadFileInfo();  // 调用m_remoteDlg对象的LoadFileInfo方法，用于加载文件信息
-}
-
-void CClientController::threadDownloadEntry(void* arg)
-{
-	CClientController* thiz = (CClientController*)arg;  // 将传入的void*类型参数arg转换为CClientController*类型指针thiz
-	thiz->threadDownloadFile();  // 调用thiz指向的CClientController对象的threadDownloadFile方法
-	_endthread();  // 结束当前线程
-}
 
 void CClientController::threadFunc() {
 	MSG msg;

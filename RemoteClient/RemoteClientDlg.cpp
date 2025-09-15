@@ -117,21 +117,8 @@ BOOL CRemoteClientDlg::OnInitDialog()  // 对话框初始化函数
 		}
 	}
 
-	// 设置此对话框的图标。  当应用程序主窗口不是对话框时，框架将自动
-	//  执行此操作
-	SetIcon(m_hIcon, TRUE);			// 设置大图标
-	SetIcon(m_hIcon, FALSE);		// 设置小图标
-
+	InitUIData(); // 函数声明：用于初始化界面（UI）相关的数据	
 	// TODO: 在此添加额外的初始化代码
-	UpdateData();  // 从控件更新数据到变量
-	m_server_address = 0x7F000001;//127.0.0.1  // 设置默认服务器地址为本地回环地址
-	m_nPort = _T("9527");  // 设置默认端口号
-	UpdateData();  // 从对话框控件更新数据到成员变量
-	CClientController* pController = CClientController::getInstance();  // 获取CClientController类的单例对象指针pController
-	pController->UpdateAddress(m_server_address, atoi((LPCTSTR)m_nPort));  // 调用pController的UpdateAddress方法，更新服务器地址和端口（m_nPort先转换为LPCTSTR再转成int）
-	UpdateData(FALSE);  // 将变量数据更新到控件
-	m_dlgStatus.Create(IDD_DLG_STATUS, this);  // 创建状态对话框
-	m_dlgStatus.ShowWindow(SW_HIDE);  // 隐藏状态对话框
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -202,6 +189,23 @@ void CRemoteClientDlg::OnBnClickedBtnFileinfo()  // 文件信息按钮点击事�
 	}
 }
 
+void CRemoteClientDlg::InitUIData()
+{
+	// 设置此对话框的图标。  当应用程序主窗口不是对话框时，框架将自动
+	//  执行此操作
+	SetIcon(m_hIcon, TRUE);			// 设置大图标
+	SetIcon(m_hIcon, FALSE);		// 设置小图标
+	UpdateData();  // 从控件更新数据到变量
+	m_server_address = 0x7F000001;//127.0.0.1  // 设置默认服务器地址为本地回环地址
+	m_nPort = _T("9527");  // 设置默认端口号
+	UpdateData();  // 从对话框控件更新数据到成员变量
+	CClientController* pController = CClientController::getInstance();  // 获取CClientController类的单例对象指针pController
+	pController->UpdateAddress(m_server_address, atoi((LPCTSTR)m_nPort));  // 调用pController的UpdateAddress方法，更新服务器地址和端口（m_nPort先转换为LPCTSTR再转成int）
+	UpdateData(FALSE);  // 将变量数据更新到控件
+	m_dlgStatus.Create(IDD_DLG_STATUS, this);  // 创建状态对话框
+	m_dlgStatus.ShowWindow(SW_HIDE);  // 隐藏状态对话框
+}
+
 void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 {
 	HTREEITEM hTree = m_Tree.GetSelectedItem();  // 获取目录树选中项
@@ -222,6 +226,81 @@ void CRemoteClientDlg::LoadFileCurrent()  // 加载当前目录文件
 	//CClientController::getInstance()->CloseSocket();  // 关闭套接字
 }
 
+void CRemoteClientDlg::Str2Tree(const std::string& drivers, CTreeCtrl& tree)
+{
+	std::string dr;
+	tree.DeleteAllItems();  // 清空目录树
+	for (size_t i = 0; i < drivers.size(); i++)  // 遍历驱动信息
+	{
+		if (drivers[i] == ',') {  // 遇到分隔符
+			dr += ":";  // 添加冒号
+			HTREEITEM hTemp = tree.InsertItem(dr.c_str(), TVI_ROOT, TVI_LAST);  // 插入驱动节点
+			tree.InsertItem(NULL, hTemp, TVI_LAST);  // 插入子节点占位
+			dr.clear();  // 清空临时字符串
+			continue;  // 继续下一次循环
+		}
+		dr += drivers[i];  // 拼接驱动字母
+	}
+	// 循环结束后再插入最后一个盘符
+	if (!dr.empty()) {
+		dr += ":";
+		HTREEITEM hTemp = tree.InsertItem(dr.c_str(), TVI_ROOT, TVI_LAST);
+		tree.InsertItem(NULL, hTemp, TVI_LAST);
+	}
+
+}
+
+void CRemoteClientDlg::UpdateFileInfo(const FILEINFO& finfo, HTREEITEM hParent)
+{
+	TRACE("hasnext %d isdirectory %d %s\r\n", finfo.HasNext, finfo.IsDirectory, finfo.szFileName);  // 输出调试信息，显示pInfo对象的HasNext（是否有下一个）、IsDirectory（是否为目录）以及szFileName（文件名）
+	if (finfo.HasNext == false)
+		return;
+	if (finfo.IsDirectory) {  // 如果是目录
+		if (CString(finfo.szFileName) == "." || (CString(finfo.szFileName) == ".."))  // 跳过当前目录和父目录
+		{
+			return;
+		}
+		TRACE("hselected %08X\r\n", hParent, m_Tree.GetSelectedItem());  // 以8位十六进制格式输出lParam的值，用于调试查看选中相关的句柄等信息
+		HTREEITEM hTemp = m_Tree.InsertItem(finfo.szFileName, (HTREEITEM)hParent, TVI_LAST);  // 插入目录节点
+		m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
+		m_Tree.Expand(hParent, TVE_EXPAND);  // 对树控件m_Tree中由lParam转换为HTREEITEM类型的项执行展开操作，TVE_EXPAND表示展开该树项
+	}
+	else {  // 如果是文件
+		m_List.InsertItem(0, finfo.szFileName);  // 添加到文件列表
+	}
+}
+
+void CRemoteClientDlg::UpdateDownloadFile(const std::string& strData, FILE* pFile)
+{
+	static LONGLONG length = 0, index = 0;  // 定义静态变量length和index，用于记录数据长度和索引，静态变量生命周期为整个程序运行期间，且只初始化一次
+	TRACE("length %d index %d\r\n", length, index);  // 输出调试信息，显示length（长度）和index（索引）的值
+	if (length == 0) {  // 判断length是否为0，为0则从head.strData中获取数据长度并赋值给length
+		length = *(long long*)strData.c_str();  // 将head.strData的C字符串首地址强制转换为long long*类型指针，解引用获取数据长度并赋值给length
+		if (length == 0) {  // 判断length是否为0，若为0表示文件长度异常
+			AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 弹出提示文件长度异常或无法读取的消息框
+			CClientController::getInstance()->DownloadEnd();  // 调用客户端控制器单例的DownloadEnd方法，结束下载操作
+		}
+
+	}
+	else if (length > 0 && (index >= length)) {  // 当length大于0且index大于等于length时，说明文件写入完成
+		fclose(pFile);  // 关闭通过lParam传递的文件指针指向的文件
+		length = 0;  // 将length重置为0
+		index = 0;   // 将index重置为0
+		CClientController::getInstance()->DownloadEnd();  // 调用客户端控制器单例的DownloadEnd方法，结束下载操作
+	}
+	else {  // 否则，继续写入文件数据
+		fwrite(strData.c_str(), 1, strData.size(), pFile);  // 将head.strData中的数据写入到pFile指向的文件中，每次写1个字节，共写head.strData.size()个字节
+		index += strData.size();  // 累加已写入的数据长度到index中
+		TRACE("index = %d\r\n", index);  // 输出调试信息，显示index（索引）的值
+		if (index >= length) {  // 判断索引index是否大于等于长度length
+			fclose(pFile);  // 关闭由lParam转换为FILE*类型的文件指针
+			length = 0;  // 将length（长度）置为0
+			index = 0;  // 将index（索引）置为0
+			CClientController::getInstance()->DownloadEnd();  // 调用CClientController单例对象的DownloadEnd方法，标记下载结束
+		}
+	}
+}
+
 void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 {
 	CPoint ptMouse;
@@ -230,13 +309,44 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 	HTREEITEM hTreeSelected = m_Tree.HitTest(ptMouse, 0);  // 获取鼠标指向的目录树项
 	if (hTreeSelected == NULL)  // 如果没有指向任何项
 		return;  // 返回
-	if (m_Tree.GetChildItem(hTreeSelected) == NULL)  // 如果没有子项
-		return;  // 返回
 	DeleteTreeChildrenItem(hTreeSelected);  // 删除子项
 	m_List.DeleteAllItems();  // 清空文件列表
 	CString strPath = GetPath(hTreeSelected);  // 获取选中项路径
 	TRACE("hTreeSelected %08X\r\n", hTreeSelected);  // 以8位十六进制格式输出hTreeSelected的值，用于调试查看树控件中选中项相关的句柄等信息
 	CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), (WPARAM)hTreeSelected);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
+}
+
+void CRemoteClientDlg::DealCommand(WORD nCmd, const std::string& strData, LPARAM lParam)
+{
+	switch (nCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
+	case 1:  // 获取驱动信息
+		Str2Tree(strData, m_Tree); // 调用Str2Tree函数，将head.strData中的数据转换并构建到m_Tree树控件中
+		break;
+	case 2://获取文件信息
+
+		UpdateFileInfo(*(PFILEINFO)strData.c_str(), (HTREEITEM)lParam);
+		// 调用UpdateFileInfo函数，把head.strData的C字符串强制转为PFILEINFO指针后解引用，得到FILEINFO对象作为第一个参数，
+		// 再将lParam强制转为HTREEITEM类型的树项句柄作为第二个参数，以此更新对应文件信息		
+		break;
+	case 3:  // 若sCmd为3，执行此处逻辑
+		MessageBox("打开文件完成！", "操作完成", MB_ICONINFORMATION); // 弹出消息框，显示“删除文件完成！”，标题为“操作完成”，图标为信息图标
+		break;
+	case 4:  // 若sCmd为4，执行此处逻辑（目前暂未编写具体逻辑）
+
+		UpdateDownloadFile(strData, (FILE*)lParam);
+		// 调用UpdateDownloadFile函数，第一个参数为head.strData（可能是与下载文件相关的数据字符串），
+		// 第二个参数是将lParam强制转换为FILE*类型的文件指针，用于更新下载文件相关信息
+		break;
+	case 9:  // 当命令标识为9时
+		MessageBox("删除文件完成！", "操作完成", MB_ICONINFORMATION); // 弹出消息框，显示“删除文件完成！”，标题为“操作完成”，图标为信息图标		
+		break;  // 跳出switch结构
+	case 1981:  // 当命令标识为1981时
+		MessageBox("连接测试成功！", "连接成功", MB_ICONINFORMATION); // 弹出消息框，显示“连接测试成功！”，标题为“连接成功”，图标为信息图标		
+		break;  // 跳出switch结构
+	default:  // 命令标识不匹配以上case时的默认分支
+		TRACE("unknow data received! %d\r\n", nCmd);  // 输出“unknow data received!”以及未知的命令标识值head.sCmd
+		break;  // 跳出switch结构
+	}
 }
 
 CString CRemoteClientDlg::GetPath(HTREEITEM hTree)  // 获取目录树项的路径
@@ -377,108 +487,19 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 {
 	if (lParam == -1 || (lParam == -2))
 	{
-
+		TRACE("socket is error %d\r\n", lParam); // 当lParam为-1或-2时，输出套接字错误及lParam的值
 	}
 	else if (lParam == 1)
-	{//对方关闭了套接字
-
+	{
+		//对方关闭了套接字
+		TRACE("socket is closed!\r\n"); // 当lParam为1时，输出套接字已关闭的信息
 	}
 	else
 	{  // 判断lParam参数是否为0，若为0则执行后续相关逻辑（此处暂未编写具体逻辑）
 		if (wParam != NULL) {  // 检查pPacket是否不为空，不为空则进行后续数据包命令处理
 			CPacket head = *(CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
 			delete (CPacket*)wParam;
-			switch (head.sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
-			case 1:  // 获取驱动信息
-			{
-				std::string drivers = head.strData;                 // 从头部数据包中获取字符串数据存入 drivers	
-				std::string dr;
-				m_Tree.DeleteAllItems();  // 清空目录树
-				for (size_t i = 0; i < drivers.size(); i++)  // 遍历驱动信息
-				{
-					if (drivers[i] == ',') {  // 遇到分隔符
-						dr += ":";  // 添加冒号
-						HTREEITEM hTemp = m_Tree.InsertItem(dr.c_str(), TVI_ROOT, TVI_LAST);  // 插入驱动节点
-						m_Tree.InsertItem(NULL, hTemp, TVI_LAST);  // 插入子节点占位
-						dr.clear();  // 清空临时字符串
-						continue;  // 继续下一次循环
-					}
-					dr += drivers[i];  // 拼接驱动字母
-				}
-				// 循环结束后再插入最后一个盘符
-				if (!dr.empty()) {
-					dr += ":";
-					HTREEITEM hTemp = m_Tree.InsertItem(dr.c_str(), TVI_ROOT, TVI_LAST);
-					m_Tree.InsertItem(NULL, hTemp, TVI_LAST);
-				}
-			}
-			break;
-			case 2://获取文件信息
-			{
-				PFILEINFO pInfo = (PFILEINFO)head.strData.c_str();  // 将数据包字符串数据转为PFILEINFO指针
-				TRACE("hasnext %d isdirectory %d %s\r\n", pInfo->HasNext, pInfo->IsDirectory, pInfo->szFileName);  // 输出调试信息，显示pInfo对象的HasNext（是否有下一个）、IsDirectory（是否为目录）以及szFileName（文件名）
-				if (pInfo->HasNext == false)
-					break;
-				if (pInfo->IsDirectory) {  // 如果是目录
-					if (CString(pInfo->szFileName) == "." || (CString(pInfo->szFileName) == ".."))  // 跳过当前目录和父目录
-					{
-						break;
-					}
-					TRACE("hselected %08X\r\n", lParam, m_Tree.GetSelectedItem());  // 以8位十六进制格式输出lParam的值，用于调试查看选中相关的句柄等信息
-					HTREEITEM hTemp = m_Tree.InsertItem(pInfo->szFileName, (HTREEITEM)lParam, TVI_LAST);  // 插入目录节点
-					m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
-					m_Tree.Expand((HTREEITEM)lParam, TVE_EXPAND);  // 对树控件m_Tree中由lParam转换为HTREEITEM类型的项执行展开操作，TVE_EXPAND表示展开该树项
-				}
-				else {  // 如果是文件
-					m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
-				}
-			}
-			break;
-			case 3:  // 若sCmd为3，执行此处逻辑
-				TRACE("run file done!\r\n");  // 输出调试信息“run file done!”，表示运行文件操作完成
-				break;
-			case 4:  // 若sCmd为4，执行此处逻辑（目前暂未编写具体逻辑）
-			{
-				static LONGLONG length = 0, index = 0;  // 定义静态变量length和index，用于记录数据长度和索引，静态变量生命周期为整个程序运行期间，且只初始化一次
-				TRACE("length %d index %d\r\n", length, index);  // 输出调试信息，显示length（长度）和index（索引）的值
-				if (length == 0) {  // 判断length是否为0，为0则从head.strData中获取数据长度并赋值给length
-					length = *(long long*)head.strData.c_str();  // 将head.strData的C字符串首地址强制转换为long long*类型指针，解引用获取数据长度并赋值给length
-					if (length == 0) {  // 判断length是否为0，若为0表示文件长度异常
-						AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 弹出提示文件长度异常或无法读取的消息框
-						CClientController::getInstance()->DownloadEnd();  // 调用客户端控制器单例的DownloadEnd方法，结束下载操作
-					}
-
-				}
-				else if (length > 0 && (index >= length)) {  // 当length大于0且index大于等于length时，说明文件写入完成
-					fclose((FILE*)lParam);  // 关闭通过lParam传递的文件指针指向的文件
-					length = 0;  // 将length重置为0
-					index = 0;   // 将index重置为0
-					CClientController::getInstance()->DownloadEnd();  // 调用客户端控制器单例的DownloadEnd方法，结束下载操作
-				}
-				else {  // 否则，继续写入文件数据
-					FILE* pFile = (FILE*)lParam;  // 将lParam强制转换为FILE*类型的文件指针pFile
-					fwrite(head.strData.c_str(), 1, head.strData.size(), pFile);  // 将head.strData中的数据写入到pFile指向的文件中，每次写1个字节，共写head.strData.size()个字节
-					index += head.strData.size();  // 累加已写入的数据长度到index中
-					TRACE("index = %d\r\n", index);  // 输出调试信息，显示index（索引）的值
-					if (index >= length) {  // 判断索引index是否大于等于长度length
-						fclose((FILE*)lParam);  // 关闭由lParam转换为FILE*类型的文件指针
-						length = 0;  // 将length（长度）置为0
-						index = 0;  // 将index（索引）置为0
-						CClientController::getInstance()->DownloadEnd();  // 调用CClientController单例对象的DownloadEnd方法，标记下载结束
-					}
-				}
-			}
-			break;
-			case 9:  // 当命令标识为9时
-				TRACE("delete file done!\r\n");  // 输出“delete file done!”表示文件删除完成
-				break;  // 跳出switch结构
-			case 1981:  // 当命令标识为1981时
-				TRACE("test connection success!\r\n");  // 输出“test connection success!”表示测试连接成功
-				break;  // 跳出switch结构
-			default:  // 命令标识不匹配以上case时的默认分支
-				TRACE("unknow data received! %d\r\n", head.sCmd);  // 输出“unknow data received!”以及未知的命令标识值head.sCmd
-				break;  // 跳出switch结构
-			}
+			DealCommand(head.sCmd, head.strData, lParam); // 调用DealCommand函数，处理head.strData中的命令，lParam为相关参数
 		}
 	}
 	return 0;

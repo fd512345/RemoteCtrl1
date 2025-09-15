@@ -22,8 +22,6 @@ public:
 	int InitController();
 	//启动
 	int Invoke(CWnd*& m_pMainWnd);
-	//发送消息
-	LRESULT SendMessage(MSG msg);  // 声明SendMessage函数，用于发送消息，接收消息标识、wParam和lParam参数，返回LRESULT类型结果
 	//更新网络服务器地址
 	void UpdateAddress(int nIP, int nPort) {  // 更新地址的函数，参数为IP和端口
 		CClientSocket::getInstance()->UpdateAddress(nIP, nPort);  // 获取CClientSocket单例对象并调用其UpdateAddress方法
@@ -62,14 +60,11 @@ public:
 protected:
 	void threadWatchScreen();  // 声明普通函数threadWatchScreen，用于实现屏幕监视相关逻辑
 	static void threadWatchScreen(void* arg);  // 声明静态函数threadWatchScreen（作为线程入口等场景使用），参数为void*类型的arg 
-	void threadDownloadFile();  // 声明线程函数threadDownloadFile，用于执行文件下载逻辑
-	static void threadDownloadEntry(void* arg);  // 声明静态线程入口函数threadDownloadEntry，符合__stdcall调用约定，参数为void*类型的arg
 	CClientController() :  // CClientController类的构造函数，使用初始化列表
 		m_statusDlg(&m_remoteDlg),  // 初始化m_statusDlg，传入m_remoteDlg的地址
 		m_watchDlg(&m_remoteDlg)  // 初始化m_watchDlg，传入m_remoteDlg的地址
 	{
 		m_hThreadWatch = INVALID_HANDLE_VALUE;  // 将m_hThreadWatch设为无效句柄值
-		m_hThreadDownload = INVALID_HANDLE_VALUE;  // 将m_hThreadDownload设为无效句柄值
 		m_hThread = INVALID_HANDLE_VALUE;  // 将m_hThread设为无效句柄值
 		m_nThreadID = -1;  // 将m_nThreadID设为-1
 		m_isClosed = true;
@@ -118,7 +113,6 @@ private:
 	CRemoteClientDlg m_remoteDlg;  // 定义 CRemoteClientDlg 类型的变量 m_remoteDlg
 	CStatusDlg m_statusDlg;  // 定义 CStatusDlg 类型的变量 m_statusDlg
 	HANDLE m_hThread;  // 定义 HANDLE 类型的变量 m_hThread，用于线程句柄
-	HANDLE m_hThreadDownload;  // 定义 HANDLE 类型的变量 m_hThreadDownload，用于下载线程句柄
 	HANDLE m_hThreadWatch;  // 定义 HANDLE 类型的变量 m_hThreadWatch，用于线程句柄
 	bool m_isClosed;  // 定义 bool 类型的变量 m_isClosed，用于标识是否关闭
 
