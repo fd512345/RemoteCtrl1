@@ -406,10 +406,10 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 	}
 	else
 	{  // 判断lParam参数是否为0，若为0则执行后续相关逻辑（此处暂未编写具体逻辑）
-		CPacket* pPacket = (CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
-		if (pPacket != NULL) {  // 检查pPacket是否不为空，不为空则进行后续数据包命令处理
-			CPacket& head = *pPacket;                 // 获取链表的第一个元素（头元素）的引用
-			switch (pPacket->sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
+		if (wParam != NULL) {  // 检查pPacket是否不为空，不为空则进行后续数据包命令处理
+			CPacket head = *(CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
+			delete (CPacket*)wParam;
+			switch (head.sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
 			case 1:  // 获取驱动信息
 			{
 				std::string drivers = head.strData;                 // 从头部数据包中获取字符串数据存入 drivers	

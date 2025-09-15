@@ -78,7 +78,8 @@ bool CClientController::SendCommandPacket(HWND hWnd, int nCmd, bool bAutoClose, 
 {
 	TRACE("cmd: %d %s start %lld \r\n", nCmd, __FUNCTION__, GetTickCount64());
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	return pClient->SendPacket(hWnd, CPacket(nCmd, pData, nLength), bAutoClose, wParam);  // 调用pClient对象的SendPacket方法，发送一个CPacket数据包，参数包括窗口句柄hWnd、构造的CPacket对象（包含命令nCmd、数据指针pData、数据长度nLength）以及自动关闭标志bAutoClose	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
+	bool ret = pClient->SendPacket(hWnd, CPacket(nCmd, pData, nLength), bAutoClose, wParam);  // 调用pClient对象的SendPacket方法，发送一个CPacket数据包，参数包括窗口句柄hWnd、构造的CPacket对象（包含命令nCmd、数据指针pData、数据长度nLength）以及自动关闭标志bAutoClose	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
+	return ret;  // 返回发送数据包的结果ret
 }
 
 void CClientController::DownloadEnd()

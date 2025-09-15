@@ -52,6 +52,12 @@ CClientSocket::CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SO
 		MessageBox(NULL, _T("无法初始化网络环境，程序即将退出！"), _T("初始化错误"), MB_OK | MB_ICONERROR);
 		exit(0);
 	}
+	m_eventInvoke = CreateEvent(NULL, TRUE, FALSE, NULL);  // 创建一个事件对象m_eventInvoke，参数依次为：安全属性（NULL表示默认）、手动重置（TRUE）、初始状态非触发（FALSE）、事件名（NULL表示无命名）
+	m_hThread = (HANDLE)_beginthreadex(NULL, 0, &CClientSocket::threadEntry, this, 0, &m_nThreadID);  // 创建线程，参数依次为：安全属性（NULL）、堆栈大小（0表示默认）、线程入口函数（CClientSocket类的threadEntry静态方法）、传递给线程的参数（this指针，即当前对象）、创建标志（0）、接收线程ID的变量地址（&m_nThreadID），并将线程句柄赋值给m_hThread
+	if (WaitForSingleObject(m_eventInvoke, 100) == WAIT_TIMEOUT) {  // 等待m_eventInvoke事件对象，超时时间100毫秒，若返回WAIT_TIMEOUT表示等待超时
+		TRACE("网络消息处理线程启动失败了！\r\n");  // 输出调试信息，提示网络消息处理线程启动失败
+	}
+	CloseHandle(m_eventInvoke);
 	m_buffer.resize(BUFFER_SIZE);         // 初始化缓冲区大小
 	memset(m_buffer.data(), 0, BUFFER_SIZE);  // 清空缓冲区
 	struct {
@@ -97,16 +103,13 @@ bool CClientSocket::InitSocket()
 
 bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed, WPARAM wParam)
 {
-	if (m_hThread == INVALID_HANDLE_VALUE) {  // 判断线程句柄是否为无效句柄
-		// 创建线程，入口函数为CClientSocket::threadEntry，传入this指针作为参数，线程ID存入m_nThreadID
-		m_hThread = (HANDLE)_beginthreadex(NULL, 0, &CClientSocket::threadEntry, this, 0, &m_nThreadID);
-	}
 	// 根据isAutoClosed标志确定模式，若为true则模式为CSM_AUTOCLOSE，否则为0
 	UINT nMode = isAutoClosed ? CSM_AUTOCLOSE : 0;
 	std::string strOut;
 	pack.Data(strOut);  // 从pack中获取数据到strOut
 	// 向线程m_nThreadID发送WM_SEND_PACK消息，附带新创建的PACKET_DATA对象（包含strOut的数据、长度和窗口句柄hWnd）
-	return PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)new PACKET_DATA(strOut.c_str(), strOut.size(), nMode, wParam), (LPARAM)hWnd);
+	bool ret= PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)new PACKET_DATA(strOut.c_str(), strOut.size(), nMode, wParam), (LPARAM)hWnd);
+	return ret;
 }
 
 //bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed)
@@ -225,6 +228,7 @@ unsigned CClientSocket::threadEntry(void* arg)
 
 void CClientSocket::threadFunc2()
 {
+	SetEvent(m_eventInvoke);
 	MSG msg;
 	while (::GetMessage(&msg, NULL, 0, 0)) {  // 获取消息，若获取到有效消息则进入循环
 		TranslateMessage(&msg);  // 转换消息（将虚拟键消息转换为字符消息）

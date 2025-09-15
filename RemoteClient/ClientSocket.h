@@ -244,6 +244,7 @@ public:
 		}
 	}
 private:
+	HANDLE m_eventInvoke; // 定义一个HANDLE类型的变量m_eventInvoke，用于表示启动事件的句柄，可用于线程同步等操作
 	UINT m_nThreadID;
 	typedef void(CClientSocket::* MSGFUNC)(UINT nMsg, WPARAM wParam, LPARAM lParam);  // 定义指向CClientController类成员函数的指针类型MSGFUNC，该成员函数接收UINT、WPARAM、LPARAM类型参数，返回LRESULT
 	std::map<UINT, MSGFUNC> m_mapFunc;
