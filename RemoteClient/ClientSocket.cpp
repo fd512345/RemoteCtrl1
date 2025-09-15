@@ -95,7 +95,7 @@ bool CClientSocket::InitSocket()
 	return true;                           // 连接成功
 }
 
-bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed)
+bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed, WPARAM wParam)
 {
 	if (m_hThread == INVALID_HANDLE_VALUE) {  // 判断线程句柄是否为无效句柄
 		// 创建线程，入口函数为CClientSocket::threadEntry，传入this指针作为参数，线程ID存入m_nThreadID
@@ -106,7 +106,7 @@ bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed
 	std::string strOut;
 	pack.Data(strOut);  // 从pack中获取数据到strOut
 	// 向线程m_nThreadID发送WM_SEND_PACK消息，附带新创建的PACKET_DATA对象（包含strOut的数据、长度和窗口句柄hWnd）
-	return PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)new PACKET_DATA(strOut.c_str(), strOut.size(), nMode), (LPARAM)hWnd);
+	return PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)new PACKET_DATA(strOut.c_str(), strOut.size(), nMode, wParam), (LPARAM)hWnd);
 }
 
 //bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed)
@@ -262,7 +262,7 @@ void CClientSocket::SendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 					size_t nLen = index;  // 记录当前已接收数据总长度
 					CPacket pack((BYTE*)pBuffer, nLen);  // 用接收的数据创建CPacket对象
 					if (nLen > 0) {  // 若有有效数据
-						::SendMessage(hWnd, WM_SEND_PACK_ACK, (WPARAM)new CPacket(pack), 0);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，附带新创建的CPacket对象
+						::SendMessage(hWnd, WM_SEND_PACK_ACK, (WPARAM)new CPacket(pack), data.wParam);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，附带新创建的CPacket对象
 						if (data.nMode & CSM_AUTOCLOSE) {  // 若数据模式包含自动关闭模式
 							CloseSocket();  // 关闭套接字
 							return;  // 结束当前处理流程

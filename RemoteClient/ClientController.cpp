@@ -74,11 +74,18 @@ LRESULT CClientController::OnShowWatcher(UINT nMsg, WPARAM wParam, LPARAM lParam
 	return m_watchDlg.DoModal();
 }
 
-bool CClientController::SendCommandPacket(HWND hWnd, int nCmd, bool bAutoClose, BYTE* pData, size_t nLength)
+bool CClientController::SendCommandPacket(HWND hWnd, int nCmd, bool bAutoClose, BYTE* pData, size_t nLength, WPARAM wParam)
 {
 	TRACE("cmd: %d %s start %lld \r\n", nCmd, __FUNCTION__, GetTickCount64());
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
-	return pClient->SendPacket(hWnd, CPacket(nCmd, pData, nLength), bAutoClose);  // 调用pClient对象的SendPacket方法，发送一个CPacket数据包，参数包括窗口句柄hWnd、构造的CPacket对象（包含命令nCmd、数据指针pData、数据长度nLength）以及自动关闭标志bAutoClose	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
+	return pClient->SendPacket(hWnd, CPacket(nCmd, pData, nLength), bAutoClose, wParam);  // 调用pClient对象的SendPacket方法，发送一个CPacket数据包，参数包括窗口句柄hWnd、构造的CPacket对象（包含命令nCmd、数据指针pData、数据长度nLength）以及自动关闭标志bAutoClose	TRACE("%s start %lld \r\n", __FUNCTION__, GetTickCount64());
+}
+
+void CClientController::DownloadEnd()
+{
+	m_statusDlg.ShowWindow(SW_HIDE);  // 隐藏状态对话框m_statusDlg
+	m_remoteDlg.EndWaitCursor();  // 结束m_remoteDlg的等待光标显示，恢复正常光标
+	m_remoteDlg.MessageBox(_T("下载完成！！"), _T("完成"));  // 在m_remoteDlg上弹出消息框，显示“下载完成！！”，标题为“完成”
 }
 
 int CClientController::DownFile(CString strPath)
@@ -90,11 +97,18 @@ int CClientController::DownFile(CString strPath)
 	if (dlg.DoModal() == IDOK) {  // 若文件对话框确认（用户选择了本地保存路径等）
 		m_strRemote = strPath;  // 记录远程文件路径
 		m_strLocal = dlg.GetPathName();  // 获取用户选择的本地保存路径
-		// 创建下载线程，传入线程入口函数和this指针
-		m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
-		if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
-			return -1;  // 返回错误标识
+		FILE* pFile = fopen(m_strLocal, "wb+");  // 以二进制读写方式打开本地文件（路径为m_strLocal）
+		if (pFile == NULL) {  // 如果文件打开失败
+			AfxMessageBox(_T("本地没有权限保存该文件，或者文件无法创建！！！"));  // 弹出提示消息框
+			return -1;  // 直接返回，终止函数执行
 		}
+
+		SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength(), (WPARAM)pFile);  // 调用SendCommandPacket函数发送命令数据包，参数依次为：目标对话框m_remoteDlg、命令标识4、是否为某种特殊状态（此处为false）、转换为BYTE*类型的m_strRemote字符串数据、m_strRemote的长度、转换为WPARAM类型的文件指针pFile
+		// 创建下载线程，传入线程入口函数和this指针
+		//m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
+		//if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
+		//	return -1;  // 返回错误标识
+		//}
 		m_remoteDlg.BeginWaitCursor();  // 开始显示等待光标
 		m_statusDlg.m_info.SetWindowText(_T("命令正在执行中！"));  // 设置状态对话框文本为“命令正在执行中！”
 		m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
@@ -163,7 +177,7 @@ void CClientController::threadDownloadFile() {
 	}
 	CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 	do {
-		int ret = SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength());  // 调用SendCommandPacket方法发送命令（命令码为4）、指定不自动关闭（false）、将m_strRemote转换为BYTE*类型的远程路径数据、数据长度为m_strRemote的长度，获取返回值ret
+		int ret = SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength(), (WPARAM)pFile);  // 调用SendCommandPacket方法发送命令（命令码为4）、指定不自动关闭（false）、将m_strRemote转换为BYTE*类型的远程路径数据、数据长度为m_strRemote的长度，获取返回值ret
 		long long nLength = *(long long*)pClient->GetPacket().strData.c_str();  // 获取文件长度
 		if (nLength == 0) {  // 文件长度为零
 			AfxMessageBox("文件长度为零或者无法读取文件！！！");  // 显示错误消息

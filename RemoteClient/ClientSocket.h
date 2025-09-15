@@ -145,18 +145,20 @@ enum {
 typedef struct PacketData {
 	std::string strData;  // 存储数据包的字符串数据
 	UINT nMode;  // 数据包的模式
-
+	WPARAM wParam;
 	// 构造函数，从字节数据创建PacketData对象
-	PacketData(const char* pData, size_t nLen, UINT mode) {
+	PacketData(const char* pData, size_t nLen, UINT mode, WPARAM nParam = 0) {
 		strData.resize(nLen);  // 调整strData大小以容纳nLen长度的数据
 		memcpy((char*)strData.c_str(), pData, nLen);  // 将pData中的数据复制到strData
 		nMode = mode;  // 设置模式
+		wParam = nParam;
 	}
 
 	// 拷贝构造函数，用于复制PacketData对象
 	PacketData(const PacketData& data) {
 		strData = data.strData;  // 复制字符串数据
 		nMode = data.nMode;  // 复制模式
+		wParam = data.wParam;
 	}
 
 	// 赋值运算符重载，用于PacketData对象之间的赋值
@@ -164,6 +166,7 @@ typedef struct PacketData {
 		if (this != &data) {  // 避免自赋值
 			strData = data.strData;  // 复制字符串数据
 			nMode = data.nMode;  // 复制模式
+			wParam = data.wParam;
 		}
 		return *this;  // 返回自身引用以支持链式赋值
 	}
@@ -212,7 +215,7 @@ public:
 	}
 
 	//bool SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed = true);
-	bool SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed = true);
+	bool SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed = true, WPARAM wParam = 0);
 	bool GetFilePath(std::string& strPath) {  // 获取数据包中的文件路径（针对特定命令）
 		if ((m_packet.sCmd >= 2) && (m_packet.sCmd <= 4)) {  // 命令2-4包含文件路径
 			strPath = m_packet.strData;

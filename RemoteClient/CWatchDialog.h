@@ -1,4 +1,7 @@
 ﻿#pragma once
+#ifndef WM_SEND_PACK_ACK
+#define WM_SEND_PACK_ACK (WM_USER+2)//发送包数据应答
+#endif // !WM_SEND_PACK_ACK
 
 
 // CWatchDialog 对话框
@@ -39,6 +42,7 @@ public:
 	virtual BOOL OnInitDialog();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	CStatic m_picture;
+	afx_msg LRESULT OnSendPackAck(WPARAM wParam, LPARAM lParam);  // MFC消息处理函数声明，afx_msg标识消息映射函数，LRESULT为返回值类型，处理发送数据包相关消息，WPARAM和LPARAM为消息参数
 	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);

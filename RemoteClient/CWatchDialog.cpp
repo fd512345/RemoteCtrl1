@@ -42,6 +42,7 @@ BEGIN_MESSAGE_MAP(CWatchDialog, CDialog)
 	ON_STN_CLICKED(IDC_WATCH, &CWatchDialog::OnStnClickedWatch)
 	ON_BN_CLICKED(IDC_BTN_LOCK, &CWatchDialog::OnBnClickedBtnLock)
 	ON_BN_CLICKED(IDC_BTN_UNLOCK, &CWatchDialog::OnBnClickedBtnUnlock)
+	ON_MESSAGE(WM_SEND_PACK_ACK, &CWatchDialog::OnSendPackAck)  // MFC的消息映射宏，将自定义消息WM_SEND_PACK_ACK与CWatchDialog类的OnSendPacket函数关联，当收到WM_SEND_PACK_ACK消息时，调用OnSendPacket处理
 END_MESSAGE_MAP()
 
 
@@ -67,7 +68,7 @@ BOOL CWatchDialog::OnInitDialog()
 
 	// TODO:  在此添加额外的初始化
 	m_isFull = false;  // 初始化图像缓存状态
-	SetTimer(0, 45, NULL);
+	//SetTimer(0, 45, NULL);
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// 异常: OCX 属性页应返回 FALSE
 }
@@ -75,28 +76,72 @@ BOOL CWatchDialog::OnInitDialog()
 
 void CWatchDialog::OnTimer(UINT_PTR nIDEvent)
 {
-	// TODO: 在此添加消息处理程序代码和/或调用默认值
-	if (nIDEvent == 0) {
-		CClientController* pParent = CClientController::getInstance();
-		if (m_isFull) {
+	//// TODO: 在此添加消息处理程序代码和/或调用默认值
+	//if (nIDEvent == 0) {
+	//	CClientController* pParent = CClientController::getInstance();
+	//	if (m_isFull) {
 
-			CRect rect;
-			m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
-			m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
-			m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
-			m_image.StretchBlt(
-				m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
-			m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
-			m_image.Destroy(); // 销毁图像对象，释放资源
-			m_isFull = false; // 标记不再处于“满”状态
-			TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
-			// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
-			// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）		
-		}
-	}
-	CDialog::OnTimer(nIDEvent);
+	//		CRect rect;
+	//		m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
+	//		m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
+	//		m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
+	//		m_image.StretchBlt(
+	//			m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
+	//		m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
+	//		m_image.Destroy(); // 销毁图像对象，释放资源
+	//		m_isFull = false; // 标记不再处于“满”状态
+	//		TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
+	//		// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
+	//		// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）		
+	//	}
+	//}
+	//CDialog::OnTimer(nIDEvent);
 }
 
+LRESULT CWatchDialog::OnSendPackAck(WPARAM wParam, LPARAM lParam)  // CWatchDialog类中处理发送数据包确认的消息响应函数，WPARAM和LPARAM为消息参数
+{
+	if (lParam == -1 || (lParam == -2))
+	{
+
+	}
+	else if (lParam == 1)
+	{//对方关闭了套接字
+
+	}
+	else
+	{  // 判断lParam参数是否为0，若为0则执行后续相关逻辑（此处暂未编写具体逻辑）
+		CPacket* pPacket = (CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
+		if (pPacket != NULL) {  // 检查pPacket是否不为空，不为空则进行后续数据包命令处理
+			switch (pPacket->sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
+			case 6:  // 若sCmd为6，执行此处逻辑（目前暂未编写具体逻辑）
+			{
+				if (m_isFull) {  // 判断成员变量m_isFull是否为true，为true则执行后续图像数据转换操作
+					CEdoyunTool::Bytes2Image(m_image, pPacket->strData);  // 调用CEdoyunTool类的Bytes2Image静态方法，将pPacket中的strData（字节数据）转换为图像并存储到m_image中
+					CRect rect;
+					m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
+					m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
+					m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
+					m_image.StretchBlt(
+						m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
+					m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
+					m_image.Destroy(); // 销毁图像对象，释放资源
+					m_isFull = false; // 标记不再处于“满”状态
+					TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
+					// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
+					// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）
+				}
+				break;
+			}
+			case 5:
+			case 7:  // 若sCmd为7，执行此处逻辑（目前暂未编写具体逻辑）
+			case 8:  // 若sCmd为8，执行此处逻辑（目前暂未编写具体逻辑）
+			default:  // 若sCmd不匹配以上case值，执行default分支逻辑（目前暂未编写具体逻辑）
+				break;
+			}
+		}
+	}
+	return 0;  // 返回LRESULT类型的默认值，作为消息处理的结果返回
+}
 
 void CWatchDialog::OnLButtonDblClk(UINT nFlags, CPoint point)
 {

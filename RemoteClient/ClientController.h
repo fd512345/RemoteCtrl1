@@ -48,14 +48,16 @@ public:
 	//8 解锁
 	//1981测试连接
 	//返回值:是状态 true成功 false失败
-	bool SendCommandPacket(HWND hWnd,/*数据包收到后，需要应答的窗口*/int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0);
+	bool SendCommandPacket(HWND hWnd,/*数据包收到后，需要应答的窗口*/int nCmd, bool bAutoClose = true, BYTE* pData = NULL, size_t nLength = 0, WPARAM wParam = 0);
 	int GetImage(CImage& image) {  // 获取图像的函数，参数为CImage引用
 		CClientSocket* pClient = CClientSocket::getInstance();  // 获取CClientSocket类的单例对象指针pClient
 		return CEdoyunTool::Bytes2Image(image, pClient->GetPacket().strData);  // 调用CEdoYunTool的Bytes2Image方法，将pClient获取的数据包中的strData转换为图像image并返回结果
 	}
 
-	int DownFile(CString strPath);  // 声明DownFile函数，用于下载文件，参数为CString类型的strPath，返回整数结果
+	void DownloadEnd();
 
+	int DownFile(CString strPath);  // 声明DownFile函数，用于下载文件，参数为CString类型的strPath，返回整数结果
+	
 	void StartWatchScreen();  // 声明StartWatchScreen函数，用于启动屏幕监视
 protected:
 	void threadWatchScreen();  // 声明普通函数threadWatchScreen，用于实现屏幕监视相关逻辑
