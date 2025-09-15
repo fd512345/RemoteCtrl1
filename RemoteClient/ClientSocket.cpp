@@ -108,8 +108,13 @@ bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed
 	std::string strOut;
 	pack.Data(strOut);  // 从pack中获取数据到strOut
 	// 向线程m_nThreadID发送WM_SEND_PACK消息，附带新创建的PACKET_DATA对象（包含strOut的数据、长度和窗口句柄hWnd）
-	bool ret= PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)new PACKET_DATA(strOut.c_str(), strOut.size(), nMode, wParam), (LPARAM)hWnd);
-	return ret;
+	PACKET_DATA* pData = new PACKET_DATA(strOut.c_str(), strOut.size(), nMode, wParam);  // 动态创建PACKET_DATA对象，传入strOut的C字符串、长度、模式nMode和参数wParam
+	// 向线程ID为m_nThreadID的线程发送WM_SEND_PACK消息，附带pData（转为WPARAM）和hWnd（转为LPARAM），并将发送结果赋值给ret
+	bool ret = PostThreadMessage(m_nThreadID, WM_SEND_PACK, (WPARAM)pData, (LPARAM)hWnd);
+	if (ret == false) {  // 如果消息发送失败
+		delete pData;  // 释放之前创建的pData对象，防止内存泄漏
+	}
+	return ret;  // 返回消息发送结果ret
 }
 
 //bool CClientSocket::SendPacket(const CPacket& pack, std::list<CPacket>& lstPacks, bool isAutoClosed)

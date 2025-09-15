@@ -135,24 +135,23 @@ void CClientController::StartWatchScreen()
 void CClientController::threadWatchScreen()
 {
 	Sleep(50);
+	ULONGLONG nTick = GetTickCount64();  // 调用GetTickCount64函数获取当前系统启动后的毫秒数（64位无符号长整型），并赋值给变量nTick，可用于计时等操作
 	while (!m_isClosed)
 	{
 		if (m_watchDlg.isFull() == false) {  // 如果远程对话框未处于“满”的状态
-			std::list<CPacket> lstPacks; // 定义存储 CPacket 类型对象的列表 lstPacks
+			if (GetTickCount64() - nTick < 200) {  // 判断从nTick记录的时间点到当前的时间差是否小于50毫秒
+				Sleep(200 - DWORD(GetTickCount64() - nTick));  // 若小于50毫秒，计算并休眠剩余的时间，使总时长达到50毫秒，用于控制操作频率或实现简单的延时同步
+			}
+			nTick = GetTickCount64();  // 更新nTick变量为当前系统启动后的毫秒数（64位无符号长整型），用于后续计时相关的判断或计算
 			int ret = SendCommandPacket(m_watchDlg.GetSafeHwnd(), 6, true, NULL, 0);  // 调用SendCommandPacket函数，向m_watchDlg对应的窗口发送命令数据包，参数分别为窗口句柄、命令标识6、自动相关标志true、数据指针NULL、数据长度0，返回值存入ret
 			//TODO:添加消息响应函数WM_SEND_PACK_ACK  // 待办：添加对WM_SEND_PACK_ACK消息的响应函数
 			//TODO:控制发送频率  // 待办：实现发送频率的控制逻辑
-			if (ret == 6) { // 如果返回值 ret 为 6
+			if (ret == 1) { // 如果返回值 ret 为 1(true)
+				//TRACE("成功发送图片\r\n");
 
-				if (CEdoyunTool::Bytes2Image(m_watchDlg.GetImage(), lstPacks.front().strData) == 0) { // 调用 Bytes2Image 函数将数据转为图像，若成功（返回 0）
-					m_watchDlg.SetImageStatus(true); // 设置图像状态为 true
-					TRACE("成功设置图片 %08X\r\n", (HBITMAP)m_watchDlg.GetImage());
-					TRACE("和校验：%04X\r\n", lstPacks.front().sSum);
-					// 打印调试信息，输出“和校验：”以及 lstPacks 列表中第一个元素的 sSum 成员（以4位十六进制形式显示，不足补0）
-				}
-				else { // 若 Bytes2Image 函数执行失败
-					TRACE("获取图片失败！ret = %d\r\n", ret); // 打印获取图片失败的调试信息
-				}
+			}
+			else { // 若 Bytes2Image 函数执行失败
+				TRACE("获取图片失败！ret = %d\r\n", ret); // 打印获取图片失败的调试信息
 			}
 		}
 		Sleep(1);

@@ -112,27 +112,29 @@ LRESULT CWatchDialog::OnSendPackAck(WPARAM wParam, LPARAM lParam)  // CWatchDial
 	{  // 判断lParam参数是否为0，若为0则执行后续相关逻辑（此处暂未编写具体逻辑）
 		CPacket* pPacket = (CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
 		if (pPacket != NULL) {  // 检查pPacket是否不为空，不为空则进行后续数据包命令处理
-			switch (pPacket->sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
+			CPacket head = *(CPacket*)wParam;  // 将wParam强制转换为CPacket*类型的指针pPacket，用于操作数据包对象
+			delete (CPacket*)wParam;
+			switch (head.sCmd) {  // 根据数据包对象的sCmd成员（命令标识）进行分支判断
 			case 6:  // 若sCmd为6，执行此处逻辑（目前暂未编写具体逻辑）
 			{
-				if (m_isFull) {  // 判断成员变量m_isFull是否为true，为true则执行后续图像数据转换操作
-					CEdoyunTool::Bytes2Image(m_image, pPacket->strData);  // 调用CEdoyunTool类的Bytes2Image静态方法，将pPacket中的strData（字节数据）转换为图像并存储到m_image中
-					CRect rect;
-					m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
-					m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
-					m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
-					m_image.StretchBlt(
-						m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
-					m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
-					m_image.Destroy(); // 销毁图像对象，释放资源
-					m_isFull = false; // 标记不再处于“满”状态
-					TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
-					// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
-					// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）
-				}
+				CEdoyunTool::Bytes2Image(m_image, head.strData);  // 调用CEdoyunTool类的Bytes2Image静态方法，将pPacket中的strData（字节数据）转换为图像并存储到m_image中
+				CRect rect;
+				m_picture.GetWindowRect(rect); // 获取图片控件的窗口矩形
+				m_nObjWidth = m_image.GetWidth(); // 若对象宽度未设置，获取图像宽度并赋值
+				m_nObjHeight = m_image.GetHeight(); // 若对象高度未设置，获取图像高度并赋值
+				m_image.StretchBlt(
+					m_picture.GetDC()->GetSafeHdc(), 0, 0, rect.Width(), rect.Height(), SRCCOPY); // 将图像拉伸绘制到图片控件的设备上下文
+				m_picture.InvalidateRect(NULL); // 使图片控件整个客户区无效，触发重绘
+				m_image.Destroy(); // 销毁图像对象，释放资源
+				m_isFull = false; // 标记不再处于“满”状态
+				TRACE("更新图片完成%d %d %08X\r\n", m_nObjWidth, m_nObjHeight, (HBITMAP)m_image);
+				// 打印调试信息，输出“更新图片完成”、图片宽度 m_nObjWidth、图片高度 m_nObjHeight，
+				// 以及将 m_image 转换为 HBITMAP 类型后的十六进制值（8位宽度，不足补0）
 				break;
 			}
 			case 5:
+				TRACE("远程端应答了鼠标操作\r\n");  // 输出调试信息，提示远程端对鼠标操作做出了应答
+				break;
 			case 7:  // 若sCmd为7，执行此处逻辑（目前暂未编写具体逻辑）
 			case 8:  // 若sCmd为8，执行此处逻辑（目前暂未编写具体逻辑）
 			default:  // 若sCmd不匹配以上case值，执行default分支逻辑（目前暂未编写具体逻辑）
@@ -165,6 +167,7 @@ void CWatchDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		TRACE("x=%d y=%d\r\n", point.x, point.y);
 		CPoint remote = UserPoint2RemoteScreenPoint(point);
 		TRACE("x=%d y=%d\r\n", point.x, point.y);
+		TRACE("remote:%d %d\r\n", remote.x, remote.y);  // 输出调试信息，显示remote对象的x和y坐标值
 		//封装
 		MOUSEEV event;
 		event.ptXY = remote;
