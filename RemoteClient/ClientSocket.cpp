@@ -254,7 +254,10 @@ bool CClientSocket::Send(const CPacket& pack)
 
 void CClientSocket::SendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 {//TODO:定义一个消息的数据结构（数据和数据长度，模式） 回调消息的数据结构（HWND）
+	PACKET_DATA data = *(PACKET_DATA*)wParam;  // 将wParam强制转换为PACKET_DATA*类型后解引用，赋值给PACKET_DATA类型的变量data，用于获取消息参数中传递的PACKET_DATA数据
 	HWND hWnd = (HWND)lParam;
+	size_t nTemp = data.strData.size();  // 获取data.strData的长度，赋值给nTemp
+	CPacket current((BYTE*)data.strData.c_str(), nTemp);  // 用data.strData的C字符串（转为BYTE*）和长度nTemp，构造CPacket对象current
 	if (InitSocket() == true) {  // 初始化套接字成功
 		PACKET_DATA data = *(PACKET_DATA*)wParam;
 		delete (PACKET_DATA*)wParam;
@@ -271,17 +274,20 @@ void CClientSocket::SendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 					size_t nLen = index;  // 记录当前已接收数据总长度
 					CPacket pack((BYTE*)pBuffer, nLen);  // 用接收的数据创建CPacket对象
 					if (nLen > 0) {  // 若有有效数据
+						TRACE("ack pack %d to hWnd %08X %d %d\r\n", pack.sCmd, hWnd, index, nLen);  // 输出调试信息，显示确认包的命令pack.sCmd、窗口句柄hWnd（以8位十六进制格式）、索引index和长度nLen	
+						TRACE("%04X\r\n", *(WORD*)pBuffer + nLen);  // 将pBuffer强制转换为WORD*类型后取值，再加上index和nLen，以4位十六进制格式输出结果，用于调试查看相关数据计算后的值
 						::SendMessage(hWnd, WM_SEND_PACK_ACK, (WPARAM)new CPacket(pack), data.wParam);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，附带新创建的CPacket对象
 						if (data.nMode & CSM_AUTOCLOSE) {  // 若数据模式包含自动关闭模式
 							CloseSocket();  // 关闭套接字
 							return;  // 结束当前处理流程
 						}
+						index -= nLen;  // 调整索引，为后续接收做准备
+						memmove(pBuffer, pBuffer + nLen, index);  // 移动剩余数据到缓冲区起始位置
 					}
-					index -= nLen;  // 调整索引，为后续接收做准备
-					memmove(pBuffer, pBuffer + index, nLen);  // 移动剩余数据到缓冲区起始位置
 				}
 				else {  // 接收失败或对方关闭连接等情况
 					//TODO：对方关闭了套接字，或者网络设备异常
+					TRACE("recv failed length %d index %d cmd %d\r\n", length, index, current.sCmd);  // 输出调试信息，提示接收失败，并显示相关的长度length、索引index以及命令current.sCmd的值
 					CloseSocket();  // 关闭套接字
 					::SendMessage(hWnd, WM_SEND_PACK_ACK, NULL, 1);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，参数为NULL
 				}
@@ -290,7 +296,7 @@ void CClientSocket::SendPack(UINT nMsg, WPARAM wParam, LPARAM lParam)
 		else {  // 发送失败
 			CloseSocket();  // 关闭套接字
 			//网络终止处理
-			::SendMessage(hWnd, WM_SEND_PACK_ACK, NULL, -1);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，参数为
+			::SendMessage(hWnd, WM_SEND_PACK_ACK, (WPARAM)new CPacket(current.sCmd, NULL, 0), -1);  // 向窗口hWnd发送WM_SEND_PACK_ACK消息，参数为
 		}
 	}
 	else {  // 初始化套接字失败

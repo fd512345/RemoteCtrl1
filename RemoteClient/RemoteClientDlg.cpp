@@ -235,29 +235,8 @@ void CRemoteClientDlg::LoadFileInfo()  // 加载文件信息
 	DeleteTreeChildrenItem(hTreeSelected);  // 删除子项
 	m_List.DeleteAllItems();  // 清空文件列表
 	CString strPath = GetPath(hTreeSelected);  // 获取选中项路径
-	std::list<CPacket> lstPackets;                      // 定义存储CPacket对象的链表
-	int nCmd = CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), (WPARAM)hTreeSelected);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
-	if (lstPackets.size() > 0) {                        // 判断链表中是否有数据包
-		TRACE("lstPackets.size = %d\r\n", lstPackets.size());  // 输出调试信息，显示lstPackets链表的元素个数
-		std::list<CPacket>::iterator it = lstPackets.begin();  // 获取链表起始迭代器
-		for (; it != lstPackets.end(); it++) {           // 遍历链表
-			PFILEINFO pInfo = (PFILEINFO)(*it).strData.c_str();  // 将数据包字符串数据转为PFILEINFO指针
-			if (pInfo->HasNext == false)
-				continue;
-			if (pInfo->IsDirectory) {  // 如果是目录
-				if (CString(pInfo->szFileName) == "." || (CString(pInfo->szFileName) == ".."))  // 跳过当前目录和父目录
-				{
-					continue;  // 继续下一次循环
-				}
-				HTREEITEM hTemp = m_Tree.InsertItem(pInfo->szFileName, hTreeSelected, TVI_LAST);  // 插入目录节点
-				m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
-			}
-			else {  // 如果是文件
-				m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
-			}
-		}
-	}
-
+	TRACE("hTreeSelected %08X\r\n", hTreeSelected);  // 以8位十六进制格式输出hTreeSelected的值，用于调试查看树控件中选中项相关的句柄等信息
+	CClientController::getInstance()->SendCommandPacket(GetSafeHwnd(), 2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength(), (WPARAM)hTreeSelected);  // 调用单例类的SendCommandPacket方法发送命令包，结果存nCmd
 }
 
 CString CRemoteClientDlg::GetPath(HTREEITEM hTree)  // 获取目录树项的路径
@@ -437,6 +416,7 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 			case 2://获取文件信息
 			{
 				PFILEINFO pInfo = (PFILEINFO)head.strData.c_str();  // 将数据包字符串数据转为PFILEINFO指针
+				TRACE("hasnext %d isdirectory %d %s\r\n", pInfo->HasNext, pInfo->IsDirectory, pInfo->szFileName);  // 输出调试信息，显示pInfo对象的HasNext（是否有下一个）、IsDirectory（是否为目录）以及szFileName（文件名）
 				if (pInfo->HasNext == false)
 					break;
 				if (pInfo->IsDirectory) {  // 如果是目录
@@ -444,8 +424,10 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 					{
 						break;
 					}
+					TRACE("hselected %08X\r\n", lParam, m_Tree.GetSelectedItem());  // 以8位十六进制格式输出lParam的值，用于调试查看选中相关的句柄等信息
 					HTREEITEM hTemp = m_Tree.InsertItem(pInfo->szFileName, (HTREEITEM)lParam, TVI_LAST);  // 插入目录节点
 					m_Tree.InsertItem("", hTemp, TVI_LAST);  // 插入子节点占位
+					m_Tree.Expand((HTREEITEM)lParam, TVE_EXPAND);  // 对树控件m_Tree中由lParam转换为HTREEITEM类型的项执行展开操作，TVE_EXPAND表示展开该树项
 				}
 				else {  // 如果是文件
 					m_List.InsertItem(0, pInfo->szFileName);  // 添加到文件列表
@@ -458,6 +440,7 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 			case 4:  // 若sCmd为4，执行此处逻辑（目前暂未编写具体逻辑）
 			{
 				static LONGLONG length = 0, index = 0;  // 定义静态变量length和index，用于记录数据长度和索引，静态变量生命周期为整个程序运行期间，且只初始化一次
+				TRACE("length %d index %d\r\n", length, index);  // 输出调试信息，显示length（长度）和index（索引）的值
 				if (length == 0) {  // 判断length是否为0，为0则从head.strData中获取数据长度并赋值给length
 					length = *(long long*)head.strData.c_str();  // 将head.strData的C字符串首地址强制转换为long long*类型指针，解引用获取数据长度并赋值给length
 					if (length == 0) {  // 判断length是否为0，若为0表示文件长度异常
@@ -476,6 +459,13 @@ LRESULT CRemoteClientDlg::OnSendPackAck(WPARAM wParam, LPARAM lParam)
 					FILE* pFile = (FILE*)lParam;  // 将lParam强制转换为FILE*类型的文件指针pFile
 					fwrite(head.strData.c_str(), 1, head.strData.size(), pFile);  // 将head.strData中的数据写入到pFile指向的文件中，每次写1个字节，共写head.strData.size()个字节
 					index += head.strData.size();  // 累加已写入的数据长度到index中
+					TRACE("index = %d\r\n", index);  // 输出调试信息，显示index（索引）的值
+					if (index >= length) {  // 判断索引index是否大于等于长度length
+						fclose((FILE*)lParam);  // 关闭由lParam转换为FILE*类型的文件指针
+						length = 0;  // 将length（长度）置为0
+						index = 0;  // 将index（索引）置为0
+						CClientController::getInstance()->DownloadEnd();  // 调用CClientController单例对象的DownloadEnd方法，标记下载结束
+					}
 				}
 			}
 			break;

@@ -105,11 +105,6 @@ int CClientController::DownFile(CString strPath)
 		}
 
 		SendCommandPacket(m_remoteDlg, 4, false, (BYTE*)(LPCSTR)m_strRemote, m_strRemote.GetLength(), (WPARAM)pFile);  // 调用SendCommandPacket函数发送命令数据包，参数依次为：目标对话框m_remoteDlg、命令标识4、是否为某种特殊状态（此处为false）、转换为BYTE*类型的m_strRemote字符串数据、m_strRemote的长度、转换为WPARAM类型的文件指针pFile
-		// 创建下载线程，传入线程入口函数和this指针
-		//m_hThreadDownload = (HANDLE)_beginthread(&CClientController::threadDownloadEntry, 0, this);
-		//if (WaitForSingleObject(m_hThreadDownload, 0) != WAIT_TIMEOUT) {  // 检查线程创建后状态，若不是超时（表示线程可能已结束等异常）
-		//	return -1;  // 返回错误标识
-		//}
 		m_remoteDlg.BeginWaitCursor();  // 开始显示等待光标
 		m_statusDlg.m_info.SetWindowText(_T("命令正在执行中！"));  // 设置状态对话框文本为“命令正在执行中！”
 		m_statusDlg.ShowWindow(SW_SHOW);  // 显示状态对话框
@@ -200,6 +195,7 @@ void CClientController::threadDownloadFile() {
 	m_statusDlg.ShowWindow(SW_HIDE);  // 隐藏状态对话框
 	m_remoteDlg.EndWaitCursor();  // 结束m_remoteDlg的等待光标显示
 	m_remoteDlg.MessageBox(_T("下载完成！！"), _T("完成"));  // 显示下载完成消息
+	m_remoteDlg.LoadFileInfo();  // 调用m_remoteDlg对象的LoadFileInfo方法，用于加载文件信息
 }
 
 void CClientController::threadDownloadEntry(void* arg)
