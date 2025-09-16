@@ -26,13 +26,13 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 public:
 	void LoadFileInfo();
-private:
+private://TODO:代码即文档
 	void DealCommand(WORD nCmd, const std::string& strData, LPARAM lParam);
 	bool m_isClosed;//监视是否关闭
 private:
 	void InitUIData(); // 函数声明：用于初始化界面（UI）相关的数据
 	void LoadFileCurrent();
-	void Str2Tree(const std::string& driver, CTreeCtrl& tree); // 函数声明：将与驱动器相关的字符串转换并构建成树结构
+	void Str2Tree(const std::string& drivers, CTreeCtrl& tree); // 函数声明：将与驱动器相关的字符串转换并构建成树结构
 	void UpdateFileInfo(const FILEINFO& finfo, HTREEITEM hParent); // 函数声明：用于更新文件信息，接收一个常量引用的FILEINFO类型参数finfo
 	void UpdateDownloadFile(const std::string& strData, FILE* pFile); // 函数声明：用于更新下载文件信息，参数为文件数据字符串和文件指针
 	CString GetPath(HTREEITEM hTree);
