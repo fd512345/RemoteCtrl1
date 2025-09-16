@@ -9,6 +9,7 @@
 #include "Command.h" 
 #include "ServerSocket.h"  // 包含服务器套接字相关头文件
 #include <conio.h>
+#include "CEdoyunQueue.h"
 #ifdef _DEBUG
 #define new DEBUG_NEW  // 调试模式下使用DEBUG_NEW宏
 #endif 
@@ -78,7 +79,7 @@ void threadmain(HANDLE hIOCP)
 		IOCP_PARAM* pParam = (IOCP_PARAM*)CompletionKey; // 将 CompletionKey 强制转换为 IOCP_PARAM* 类型的指针，用于后续操作 IOCP_PARAM 结构体数据
 		if (pParam->nOperator == IocpListPush) { // 判断操作类型为推入列表
 			lstString.push_back(pParam->strData); // 将数据推入字符串列表
-			count++;
+			count0++;
 		}
 		else if (pParam->nOperator == IocpListPop) { // 若操作类型为从 IOCP 列表弹出
 			printf("%p size %d\r\n", pParam->cbFunc, lstString.size()); // 输出回调函数地址和列表大小
@@ -125,43 +126,31 @@ void func(void* arg) // 函数 func，接收 void* 类型的参数
 
 int main()  // 主函数
 {
-	if (!Init()) return 1;
+	if (!CEdoyunTool::Init()) return 1; // 调用工具类初始化方法，若失败则返回 1
 
-	printf("press any key to exit ...\r\n"); // 输出提示信息，按任意键退出
-	HANDLE hIOCP = INVALID_HANDLE_VALUE; // Input/Output Completion Port，初始化 IOCP 句柄为无效句柄值
-	hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1); // 调用 CreateIoCompletionPort 函数创建 I/O 完成端口，第一个参数为 INVALID_HANDLE_VALUE 表示创建新的完成端口，最后一个参数 1 可指定关联的线程数等（具体含义依场景）
-	if (hIOCP == INVALID_HANDLE_VALUE || (hIOCP == NULL)) { // 判断 IOCP 句柄是否为无效句柄值或空
-		printf("create iocp failed!%d\r\n", GetLastError()); // 输出创建 IOCP 失败的信息及错误码
-		return 1; // 返回 1 表示程序执行失败
-	}
-	HANDLE hThread = (HANDLE)_beginthread(threadQueueEntry, 0, hIOCP); // 调用 _beginthread 创建线程，入口函数为 threadQueueEntry，传递 hIOCP 作为参数
-
-	ULONGLONG tick = GetTickCount64(); // 获取当前系统启动后的毫秒数（64 位）
-	ULONGLONG tick0 = GetTickCount64(); // 获取当前系统启动后的毫秒数（64 位）
-	int count = 0, count0 = 0;
-	while (_kbhit() == 0) { // 当有键盘输入时进入循环 把请求和实现分离
-		if (GetTickCount64() - tick0 > 1300) { // 如果距离上次记录的时间超过 1300 毫秒
-			// 向 I/O 完成端口投递完成状态，携带新创建的 IOCP_PARAM（操作类型为 IocpListPush，数据为 "hello world"）
-			PostQueuedCompletionStatus(hIOCP, sizeof(IOCP_PARAM), (ULONG_PTR)new IOCP_PARAM(IocpListPop, "hello world", func), NULL);
-			tick0 = GetTickCount64(); // 获取当前系统启动后的毫秒数（64 位）
-			count++;
+	printf("press any key to exit ...\r\n"); // 提示按任意键退出
+	CEdoyunQueue<std::string> lstStrings; // 定义存储 std::string 类型的队列
+	ULONGLONG tick0 = GetTickCount64(), tick = GetTickCount64(); // 获取当前系统启动后的毫秒数，用于计时
+	while (_kbhit() == 0) { // 当没有键盘输入时进入循环（完成端口 把请求与实现 分离了）
+		if (GetTickCount64() - tick0 > 1300) { // 若距离上次 tick0 记录的时间超过 1300 毫秒
+			lstStrings.PushBack("hello world"); // 向队列尾部添加 "hello world"
+			tick0 = GetTickCount64(); // 更新 tick0 为当前时间
 		}
-		if (GetTickCount64() - tick > 2000) { // 如果距离上次记录的时间超过 2000 毫秒
-			// 向 I/O 完成端口投递完成状态，携带新创建的 IOCP_PARAM（操作类型为 IocpListPush，数据为 "hello world"）
-			PostQueuedCompletionStatus(hIOCP, sizeof(IOCP_PARAM), (ULONG_PTR)new IOCP_PARAM(IocpListPush, "hello world"), NULL);
-			tick = GetTickCount64(); // 更新上次记录的时间为当前时间
-			count0++;
+		if (GetTickCount64() - tick > 2000) { // 若距离上次 tick 记录的时间超过 2000 毫秒
+			std::string str;
+			lstStrings.PopFront(str); // 从队列头部弹出数据到 str
+			tick = GetTickCount64(); // 更新 tick 为当前时间
+			printf("pop from queue:%s\r\n", str.c_str()); // 输出弹出的字符串
 		}
 		Sleep(1); // 线程休眠 1 毫秒
 	}
+	printf("exit done!size %d\r\n", lstStrings.Size()); // 输出退出时队列的大小
+	lstStrings.Clear(); // 清空队列
+	printf("exit done!size %d\r\n", lstStrings.Size()); // 输出清空后队列的大小
+	::exit(0); // 程序正常退出
 
-	if (hIOCP != NULL) { // 判断 hIOCP 是否不为空（即 I/O 完成端口有效）
-		PostQueuedCompletionStatus(hIOCP, 0, NULL, NULL); // 向 I/O 完成端口投递一个完成状态
-		WaitForSingleObject(hThread, INFINITE); // 无限等待创建的线程结束
-	}
-	CloseHandle(hIOCP); // 关闭 I/O 完成端口的句柄
-	printf("exit done! count %d count0 %d\r\n", count, count0); // 输出变量 count 和 count0 的值，格式为“count [count的值] count0 [count0的值]”
-	::exit(0); // 调用全局的 exit 函数，以 0 为退出码终止程序
+
+
 
 	/*if (!Init()) return 1;
 	CCommand cmd;  // 定义命令处理对象
