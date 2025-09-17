@@ -24,20 +24,7 @@
 CWinApp theApp;  // 定义MFC应用程序对象
 
 using namespace std;  // 使用标准命名空间 
-bool Init()
-{
-	HMODULE hModule = ::GetModuleHandle(nullptr);  // 获取当前模块的句柄，若为 nullptr 表示获取失败
-	if (hModule == nullptr) {
-		wprintf(L"错误: GetModuleHandle 失败\n");  // 输出获取模块句柄失败的错误信息
-		return false;  // 返回 false 表示初始化失败
-	}
-	if (!AfxWinInit(hModule, nullptr, ::GetCommandLine(), 0))  // 初始化 MFC 库，若返回 false 表示初始化失败
-	{
-		wprintf(L"错误: MFC 初始化失败\n");  // 输出 MFC 初始化失败的错误信息
-		return false;  // 返回 false 表示初始化失败
-	}
-	return true;
-}
+
 
 #define IOCP_LIST_EMPTY 0  // 定义宏，标识 IOCP 列表为空
 #define IOCP_LIST_PUSH 1   // 定义宏，标识对 IOCP 列表执行推入操作
@@ -124,19 +111,19 @@ void func(void* arg) // 函数 func，接收 void* 类型的参数
 	}
 }
 
-int main()  // 主函数
+void test()//性能测试
 {
-	if (!CEdoyunTool::Init()) return 1; // 调用工具类初始化方法，若失败则返回 1
-
 	printf("press any key to exit ...\r\n"); // 提示按任意键退出
 	CEdoyunQueue<std::string> lstStrings; // 定义存储 std::string 类型的队列
-	ULONGLONG tick0 = GetTickCount64(), tick = GetTickCount64(); // 获取当前系统启动后的毫秒数，用于计时
-	while (_kbhit() == 0) { // 当没有键盘输入时进入循环（完成端口 把请求与实现 分离了）
-		if (GetTickCount64() - tick0 > 1300) { // 若距离上次 tick0 记录的时间超过 1300 毫秒
+	ULONGLONG tick0 = GetTickCount64(), tick = GetTickCount64(), total = GetTickCount64(); // 获取当前系统启动后的毫秒数，用于计时
+	while (GetTickCount64() - tick0 <= 1000) { // 当没有键盘输入时进入循环（完成端口 把请求与实现 分离了）
+		//if (GetTickCount64() - tick0 > 13)
+		{ // 若距离上次 tick0 记录的时间超过 1300 毫秒
 			lstStrings.PushBack("hello world"); // 向队列尾部添加 "hello world"
 			tick0 = GetTickCount64(); // 更新 tick0 为当前时间
 		}
-		if (GetTickCount64() - tick > 2000) { // 若距离上次 tick 记录的时间超过 2000 毫秒
+		//if (GetTickCount64() - tick > 20) 
+		{ // 若距离上次 tick 记录的时间超过 2000 毫秒
 			std::string str;
 			lstStrings.PopFront(str); // 从队列头部弹出数据到 str
 			tick = GetTickCount64(); // 更新 tick 为当前时间
@@ -147,7 +134,23 @@ int main()  // 主函数
 	printf("exit done!size %d\r\n", lstStrings.Size()); // 输出退出时队列的大小
 	lstStrings.Clear(); // 清空队列
 	printf("exit done!size %d\r\n", lstStrings.Size()); // 输出清空后队列的大小
-	::exit(0); // 程序正常退出
+}
+
+/*
+1 bug测试/功能测试
+2 关键因素的测试(内存泄漏、运行的稳定性、条件性)
+3 压力测试(可靠性测试)
+4 性能测试
+*/
+
+int main()  // 主函数
+{
+	if (!CEdoyunTool::Init()) return 1; // 调用工具类初始化方法，若失败则返回 1
+	for (int i = 0; i < 10; i++)
+	{
+		test();
+	}
+
 
 
 
