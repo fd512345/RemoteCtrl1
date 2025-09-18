@@ -27,11 +27,23 @@ public:
 	std::vector<char> m_buffer;//»º³åÇø
 	ThreadWorker m_worker;//´¦Àíº¯Êı
 	EdoyunServer* m_server;//·şÎñÆ÷¶ÔÏó
+	PCLIENT m_client;//¶ÔÓ¦µÄ¿Í»§¶Ë
+	WSABUF m_wsabuffer;
 };
-template<EdoyunOperator> class AcceptOverlapped;// Ä£°å²ÎÊı£¬ÍÆ²âÊÇÓë²Ù×÷ÀàĞÍÏà¹ØµÄÄ£°å
-typedef AcceptOverlapped<EAccept> ACCEPTOVERLAPPED;
+
+template<EdoyunOperator>class AcceptOverlapped;  // Ç°ÏòÉùÃ÷Ä£°åÀà AcceptOverlapped
+typedef AcceptOverlapped<EAccept> ACCEPTOVERLAPPED;  // ¶¨Òå ACCEPTOVERLAPPED Îª AcceptOverlapped<EAaccept> µÄÀàĞÍ±ğÃû
+
+template<EdoyunOperator>class RecvOverlapped;  // Ç°ÏòÉùÃ÷Ä£°åÀà RecvOverlapped
+typedef RecvOverlapped<ERecv> RECVOVERLAPPED;  // ¶¨Òå RECVOVERLAPPED Îª RecvOverlapped<ERecv> µÄÀàĞÍ±ğÃû
+
+template<EdoyunOperator>class SendOverlapped;  // Ç°ÏòÉùÃ÷Ä£°åÀà SendOverlapped
+typedef SendOverlapped<ESend> SENDOVERLAPPED;  // ¶¨Òå SENDOVERLAPPED Îª SendOverlapped<ESend> µÄÀàĞÍ±ğÃû
+
 
 class EdoyunClient { // ¶¨Òå EdoyunClient Àà£¬ÓÃÓÚ±íÊ¾¿Í»§¶Ë
+
+
 public:
 	EdoyunClient();
 	~EdoyunClient() { // Îö¹¹º¯Êı
@@ -50,14 +62,29 @@ public:
 	operator LPDWORD() { // ÀàĞÍ×ª»»ÔËËã·û£¬½«µ±Ç°¶ÔÏó×ª»»Îª LPDWORD£¨DWORD*£©ÀàĞÍ
 		return &m_received; // ·µ»Ø m_received ³ÉÔ±±äÁ¿µÄµØÖ·
 	}
+	LPWSABUF RecvWSABuffer();
+	LPWSABUF SendWSABuffer();
+	DWORD& flags() { return m_flags; }  // ·µ»Øm_flagsµÄÒıÓÃ£¬¿ÉÓÃÓÚĞŞ¸Äm_flagsµÄÖµ
 	sockaddr_in* GetLocalAddr() { return &m_laddr; }  // »ñÈ¡±¾µØµØÖ·£¬·µ»Ø m_laddr µÄÒıÓÃ
 	sockaddr_in* GetRemoteAddr() { return &m_raddr; }  // »ñÈ¡Ô¶³ÌµØÖ·£¬·µ»Ø m_raddr µÄÒıÓÃ
+	size_t GetBufferSize()const { return m_buffer.size(); }  // ³£Á¿³ÉÔ±º¯Êı£¬·µ»Øm_bufferµÄ´óĞ¡
+	int Recv() {
+		int ret = recv(m_sock, m_buffer.data() + m_used, m_buffer.size() - m_used, 0);  // µ÷ÓÃrecvº¯Êı´ÓÌ×½Ó×Öm_sock½ÓÊÕÊı¾İ£¬´æ´¢µ½m_bufferÖĞ
+		if (ret <= 0)return -1;
+		m_used += (size_t)ret;
+		//½âÎöÊı¾İ
+		return 0;
+	}
 private:
 private:
 	SOCKET m_sock; // ¿Í»§¶ËÌ×½Ó×Ö
 	DWORD m_received;
+	DWORD m_flags;
 	std::shared_ptr<ACCEPTOVERLAPPED> m_overlapped;
+	std::shared_ptr<RECVOVERLAPPED> m_recv;
+	std::shared_ptr<SENDOVERLAPPED> m_send;  // ¶¨ÒåÒ»¸ö shared_ptr ÖÇÄÜÖ¸Õë m_send£¬ÓÃÓÚ¹ÜÀí SENDOVERLAPPED ÀàĞÍµÄ¶ÔÏó£¬ÊµÏÖ×Ô¶¯ÄÚ´æ¹ÜÀí 
 	std::vector<char> m_buffer; // Êı¾İ»º³åÇø
+	size_t m_used;//ÒÑÊ¹ÓÃµÄ»º³åÇø´óĞ¡
 	sockaddr_in m_laddr; // µØÖ·½á¹¹£¬ÓÃÓÚlocal¶ËµØÖ·ĞÅÏ¢
 	sockaddr_in m_raddr; // µØÖ·½á¹¹£¬ÓÃÓÚremote¶ËµØÖ·ĞÅÏ¢
 	bool m_isbusy;
@@ -68,39 +95,28 @@ class AcceptOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // ¶¨Ò
 public:
 	AcceptOverlapped();
 	int AcceptWorker();
-	PCLIENT m_client;
 };
 
 
 
 
 
-template<EdoyunOperator> // Ä£°å²ÎÊı£¬ÍÆ²âÊÇÓë²Ù×÷ÀàĞÍÏà¹ØµÄÄ£°å
+template<EdoyunOperator> // Ä£°å²ÎÊı£¬Óë²Ù×÷ÀàĞÍÏà¹ØµÄÄ£°å
 class RecvOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // ¶¨Òå AcceptOverlapped Àà£¬¼Ì³Ğ×Ô EdoyunOverlapped ºÍ ThreadFuncBase
 public:
-	RecvOverlapped()
-		: m_operator(ERecv), // ³õÊ¼»¯²Ù×÷ÀàĞÍÎª EAccept£¨½ÓÊÜÁ¬½Ó²Ù×÷£©
-		m_worker(this, &RecvOverlapped::RecvWorker) { // ³õÊ¼»¯¹¤×÷¶ÔÏó m_worker£¬¹ØÁªµ±Ç°¶ÔÏóºÍ AcceptWorker ³ÉÔ±º¯Êı
-		memset(&m_overlapped, 0, sizeof(m_overlapped)); // ½«ÖØµş I/O ½á¹¹ m_overlapped ÄÚ´æÇåÁã
-		m_buffer.resize(1024 * 256); // µ÷Õû»º³åÇø m_buffer ´óĞ¡Îª 1024*256
-	}
+	RecvOverlapped();
 	int RecvWorker() { // ¶¨Òå AcceptWorker ³ÉÔ±º¯Êı£¬ÓÃÓÚ´¦Àí½ÓÊÜÁ¬½ÓÏà¹Ø¹¤×÷
-		// TODO: ´Ë´¦´ı²¹³ä½ÓÊÜÁ¬½ÓµÄ¾ßÌåÂß¼­
+		int ret = m_client->Recv();  // µ÷ÓÃm_clientÖ¸Ïò¶ÔÏóµÄRecv·½·¨£¬½ÓÊÕ·µ»ØÖµ´æÈëret
+		return ret;                  // ·µ»ØRecv·½·¨µÄ·µ»ØÖµ
 	}
 };
-typedef RecvOverlapped<ERecv> RECVOVERLAPPED;
 
 template<EdoyunOperator> // Ä£°å²ÎÊı£¬ÍÆ²âÊÇÓë²Ù×÷ÀàĞÍÏà¹ØµÄÄ£°å
 class SendOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // ¶¨Òå AcceptOverlapped Àà£¬¼Ì³Ğ×Ô EdoyunOverlapped ºÍ ThreadFuncBase
 public:
-	SendOverlapped()
-		: m_operator(ESend), // ³õÊ¼»¯²Ù×÷ÀàĞÍÎª ESend
-		m_worker(this, &SendOverlapped::SendWorker) { // ³õÊ¼»¯¹¤×÷¶ÔÏó m_worker£¬¹ØÁªµ±Ç°¶ÔÏóºÍ AcceptWorker ³ÉÔ±º¯Êı
-		memset(&m_overlapped, 0, sizeof(m_overlapped)); // ½«ÖØµş I/O ½á¹¹ m_overlapped ÄÚ´æÇåÁã
-		m_buffer.resize(1024 * 256); // µ÷Õû»º³åÇø m_buffer ´óĞ¡Îª 1024*256
-	}
+	SendOverlapped();
 	int SendWorker() { // ¶¨Òå AcceptWorker ³ÉÔ±º¯Êı£¬ÓÃÓÚ´¦Àí½ÓÊÜÁ¬½ÓÏà¹Ø¹¤×÷
-		// TODO: ´Ë´¦´ı²¹³ä½ÓÊÜÁ¬½ÓµÄ¾ßÌåÂß¼­
+		return -1;
 	}
 };
 typedef SendOverlapped<ESend> SENDOVERLAPPED;
@@ -115,7 +131,7 @@ public:
 		m_buffer.resize(1024); // µ÷Õû»º³åÇø m_buffer ´óĞ¡Îª 1024
 	}
 	int ErrorWorker() { // ¶¨Òå AcceptWorker ³ÉÔ±º¯Êı£¬ÓÃÓÚ´¦Àí½ÓÊÜÁ¬½ÓÏà¹Ø¹¤×÷
-		// TODO: ´Ë´¦´ı²¹³ä½ÓÊÜÁ¬½ÓµÄ¾ßÌåÂß¼­
+		return -1;
 	}
 };
 typedef ErrorOverlapped<EError> ERROROVERLAPPED;
@@ -136,37 +152,7 @@ public:
 
 	}
 	~EdoyunServer() {} // Îö¹¹º¯Êı£¬´Ë´¦Îª¿Õ£¬¿ÉÄÜºóĞø²¹³ä×ÊÔ´ÊÍ·ÅÂß¼­
-	bool StartService()
-	{
-		CreateSocket();
-		sockaddr_in addr; // ¶¨Òå IPv4 µØÖ·½á¹¹
-		// °ó¶¨Ì×½Ó×Öµ½Ö¸¶¨µØÖ·ºÍ¶Ë¿Ú
-		if (bind(m_sock, (sockaddr*)&m_addr, sizeof(m_addr)) == -1) {
-			closesocket(m_sock); // °ó¶¨Ê§°ÜÔò¹Ø±ÕÌ×½Ó×Ö
-			m_sock = INVALID_SOCKET; // ½«Ì×½Ó×ÖÉèÎªÎŞĞ§
-			return false; // º¯Êı·µ»Ø
-		}
-		if (listen(m_sock, 3) == -1)
-		{
-			closesocket(m_sock); // ¼àÌıÊ§°ÜÔò¹Ø±ÕÌ×½Ó×Ö
-			m_sock = INVALID_SOCKET; // ½«Ì×½Ó×ÖÉèÎªÎŞĞ§
-			return false; // º¯Êı·µ»Ø
-		}
-
-		// ´´½¨ I/O Íê³É¶Ë¿Ú£¬µÚÒ»¸ö²ÎÊıÎªÎŞĞ§¾ä±ú£¬µÚ¶ş¸öÎª NULL£¨´´½¨ĞÂ¶Ë¿Ú£©£¬µÚÈı¸öÎª 0£¨ÎŞ¹ØÁª¼ü£©£¬µÚËÄ¸öÎª 4£¨²¢·¢Ïß³ÌÊı£©
-		m_hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 4);
-		if (m_hIOCP == NULL) { // ÅĞ¶Ï I/O Íê³É¶Ë¿Ú¾ä±úÊÇ·ñÎª NULL
-			closesocket(m_sock); // ¹Ø±ÕÌ×½Ó×Ö m_sock
-			m_sock = INVALID_SOCKET; // ½«Ì×½Ó×Ö m_sock ÉèÎªÎŞĞ§
-			m_hIOCP = INVALID_HANDLE_VALUE; // ½« I/O Íê³É¶Ë¿Ú¾ä±úÉèÎªÎŞĞ§
-			return false; // º¯Êı·µ»Ø
-		}
-		CreateIoCompletionPort((HANDLE)m_sock, m_hIOCP, (ULONG_PTR)this, 0); // ½«Ì×½Ó×Ö m_sock Óë I/O Íê³É¶Ë¿Ú m_hIOCP ¹ØÁª£¬´«µİµ±Ç°¶ÔÏóÖ¸Õë this ×÷Îª¼ü£¬×îºóÒ»¸ö²ÎÊı 0 ±íÊ¾Ä¬ÈÏ²¢·¢Êı
-		m_pool.Invoke();
-		m_pool.DispatchWorker(ThreadWorker(this, (FUNCTYPE)&EdoyunServer::threadIocp)); // µ÷ÓÃÏß³Ì³ØµÄ DispatchWorker ·½·¨£¬·Ö·¢Ò»¸ö ThreadWorker ¶ÔÏó£¬¸Ã¶ÔÏó·â×°ÁËµ±Ç° EdoyunServer ¶ÔÏó£¨this£©ºÍÆä threadIocp ³ÉÔ±º¯Êı£¨×ª»»Îª FUNCTYPE ÀàĞÍµÄ³ÉÔ±º¯ÊıÖ¸Õë£©£¬ÓÃÓÚÔÚÏß³Ì³ØÖĞÖ´ĞĞ threadIocp º¯ÊıÂß¼­
-		if (!NewAccept()) return false; // µ÷ÓÃ NewAccept º¯Êı£¬ÈôÆä·µ»ØÖµÎª false£¨±íÊ¾ĞÂ½ÓÊÜÁ¬½Ó²Ù×÷Ê§°Ü£©£¬Ôòµ±Ç°º¯Êı·µ»Ø false
-		return true;
-	}
+	bool StartService();
 	bool NewAccept()
 	{
 		PCLIENT pClient(new EdoyunClient()); // ´´½¨ EdoyunClient ¶ÔÏóµÄÖÇÄÜÖ¸Õë pClient
@@ -193,47 +179,7 @@ private:
 		int opt = 1;
 		setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));// ÉèÖÃÌ×½Ó×ÖÑ¡Ïî£¬ÔÊĞíÖØÓÃ±¾µØµØÖ·ºÍ¶Ë¿Ú SO_REUSEADDR£º¾ßÌåÑ¡Ïî£¬ÔÊĞíµØÖ·ÖØÓÃ£¨½â¾ö¶Ë¿ÚÕ¼ÓÃÎÊÌâ£©
 	}
-	int threadIocp()
-	{
-		DWORD transferred = 0; // ÓÃÓÚ´æ´¢´«ÊäµÄ×Ö½ÚÊı
-		ULONG_PTR CompletionKey = 0; // ÓÃÓÚ´æ´¢Íê³É¼ü
-		OVERLAPPED* lpOverlapped = NULL; // ÓÃÓÚ´æ´¢ÖØµş I/O ½á¹¹Ö¸Õë
-		// ´Ó I/O Íê³É¶Ë¿Ú»ñÈ¡Íê³ÉµÄ I/O ²Ù×÷×´Ì¬£¬INFINITY ±íÊ¾ÎŞÏŞµÈ´ı
-		if (GetQueuedCompletionStatus(m_hIOCP, &transferred, &CompletionKey, &lpOverlapped, INFINITE)) {
-			if (transferred > 0 && (CompletionKey != 0)) { // ÅĞ¶Ï´«Êä×Ö½ÚÊı´óÓÚ0ÇÒÍê³É¼ü·Ç0
-				// Í¨¹ı CONTAINING_RECORD ºê£¬´Ó OVERLAPPED ½á¹¹Ö¸Õë»ñÈ¡°üº¬ËüµÄ EdoyunOverlapped ½á¹¹Ö¸Õë
-				EdoyunOverlapped* pOverlapped = CONTAINING_RECORD(lpOverlapped, EdoyunOverlapped, m_overlapped);
-				switch (pOverlapped->m_operator) { // ¸ù¾İ²Ù×÷ÀàĞÍÃ¶¾ÙÖµ½øĞĞ·ÖÖ§´¦Àí
-				case EAccept: { // ´¦Àí½ÓÊÜÁ¬½Ó²Ù×÷µÄÇé¿ö
-					ACCEPTOVERLAPPED* pOver = (ACCEPTOVERLAPPED*)pOverlapped; // ½« pOverlapped ×ª»»Îª ACCEPTOVERLAPPED ÀàĞÍÖ¸Õë
-					m_pool.DispatchWorker(pOver->m_worker); // µ÷ÓÃÏß³Ì³ØµÄ DispatchWorker ·½·¨£¬·Ö·¢ pOver ÖĞµÄ¹¤×÷¶ÔÏó m_worker
-				}
-							break;
-				case ERecv: { // ´¦Àí½ÓÊÕÊı¾İ²Ù×÷µÄÇé¿ö
-					RECVOVERLAPPED* pOver = (RECVOVERLAPPED*)pOverlapped; // ½« pOverlapped ×ª»»Îª RECVOVERLAPPED ÀàĞÍÖ¸Õë
-					m_pool.DispatchWorker(pOver->m_worker); // µ÷ÓÃÏß³Ì³ØµÄ DispatchWorker ·½·¨£¬·Ö·¢ pOver ÖĞµÄ¹¤×÷¶ÔÏó m_worker
-				}
-						  break;
-				case ESend: { // ´¦Àí·¢ËÍÊı¾İ²Ù×÷µÄÇé¿ö
-					SENDOVERLAPPED* pOver = (SENDOVERLAPPED*)pOverlapped; // ½« pOverlapped ×ª»»Îª SENDOverlapped ÀàĞÍÖ¸Õë
-					m_pool.DispatchWorker(pOver->m_worker); // µ÷ÓÃÏß³Ì³ØµÄ DispatchWorker ·½·¨£¬·Ö·¢ pOver ÖĞµÄ¹¤×÷¶ÔÏó m_worker
-				}
-						  break;
-				case EError: { // ´¦Àí´íÎóÇé¿ö
-					ERROROVERLAPPED* pOver = (ERROROVERLAPPED*)pOverlapped; // ½« pOverlapped ×ª»»Îª ERROROverlapped ÀàĞÍÖ¸Õë
-					m_pool.DispatchWorker(pOver->m_worker); // µ÷ÓÃÏß³Ì³ØµÄ DispatchWorker ·½·¨£¬·Ö·¢ pOver ÖĞµÄ¹¤×÷¶ÔÏó m_worker
-				}
-						   break;
-
-				}
-			}
-			else
-			{
-				return -1;
-			}
-		}
-		return 0; // º¯Êı·µ»Ø 0
-	}
+	int threadIocp();
 private:
 	EdoyunThreadPool m_pool; // Ïß³Ì³Ø£¬ÓÃÓÚ¹ÜÀí·şÎñÆ÷Ïß³Ì
 	HANDLE m_hIOCP; // I/O Íê³É¶Ë¿Ú¾ä±ú
@@ -241,6 +187,5 @@ private:
 	// ´æ´¢Ì×½Ó×ÖÓë¿Í»§¶Ë¶ÔÏóÖÇÄÜÖ¸ÕëµÄÓ³Éä£¬¼üÎªÌ×½Ó×Ö¾ä±ú£¬ÖµÎª EdoyunClient ÖÇÄÜÖ¸Õë
 	sockaddr_in m_addr;
 	std::map<SOCKET, std::shared_ptr<EdoyunClient>> m_client;
-	CEdoyunQueue<EdoyunClient> m_lstClient; // ¶¨ÒåÒ»¸öÃûÎª m_lstClient µÄ¶ÓÁĞ¶ÔÏó£¬¸Ã¶ÓÁĞ´æ´¢ EdoyunClient ÀàĞÍµÄÔªËØ£¬ÓÃÓÚ¹ÜÀí¿Í»§¶ËÏà¹ØµÄ¶ÓÁĞ²Ù×÷
 };
 

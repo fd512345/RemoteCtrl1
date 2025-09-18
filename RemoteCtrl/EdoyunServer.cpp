@@ -19,13 +19,41 @@ int AcceptOverlapped<op>::AcceptWorker() {  // 模板类 AcceptOverlapped 的 Accept
 			(sockaddr**)m_client->GetLocalAddr(), &lLength, // 本地地址
 			(sockaddr**)m_client->GetRemoteAddr(), &rLength // 远程地址
 		);
-		if (!m_server->NewAccept())  // 调用服务器的 NewAccept 方法，若返回 false
+		int ret = WSARecv(
+			(SOCKET)*m_client,          // 强制转换为SOCKET类型的客户端套接字，指定接收数据的套接字
+			m_client->RecvWSABuffer(),  // 获取接收用的WSABUF结构体指针，描述接收缓冲区等信息
+			1,                          // 要接收的WSABUF结构体数量
+			*m_client,                  // 指向用于存储接收字节数的变量的指针
+			&m_client->flags(),         // 指向接收操作标志的指针，用于获取操作相关标志
+			*m_client,                  // 指向WSAOVERLAPPED结构体的指针，若使用重叠I/O则非空（这里根据上下文推测传入对应重叠结构）
+			NULL);                      // 完成例程的指针，重叠I/O时用于指定操作完成后的回调，这里为NULL表示非重叠或无需回调		
+		if (ret == SOCKET_ERROR && (WSAGetLastError() != WSA_IO_PENDING)) {  // 若接收操作返回错误且错误不是重叠I/O操作挂起
+			//TODO:报错  // 待处理的报错逻辑
+		}		if (!m_server->NewAccept())  // 调用服务器的 NewAccept 方法，若返回 false
 		{
 			return -2;  // 返回 -2
 		}
 	}
 	return -1;  // 否则返回 -1
-}EdoyunClient::EdoyunClient() : m_isbusy(false), m_overlapped(new ACCEPTOVERLAPPED()) {  // 构造函数，初始化成员变量，m_isbusy 为 false，新建 ACCEPTOVERLAPPED 对象给 m_overlapped
+}
+
+template<EdoyunOperator op>
+inline SendOverlapped<op>::SendOverlapped() {
+	m_operator = op;  // 初始化操作符成员m_operator为模板参数op
+	m_worker = ThreadWorker(this, (FUNCTYPE)&SendOverlapped<op>::SendWorker);  // 初始化工作线程m_worker，绑定当前对象和SendWorker成员函数
+	memset(&m_overlapped, 0, sizeof(m_overlapped));  // 将重叠I/O结构m_overlapped内存清零
+	m_buffer.resize(1024 * 256);  // 调整发送缓冲区m_buffer大小为1024*256
+}
+
+template<EdoyunOperator op>
+inline RecvOverlapped<op>::RecvOverlapped() {
+	m_operator = op;  // 初始化操作符成员m_operator为模板参数op
+	m_worker = ThreadWorker(this, (FUNCTYPE)&RecvOverlapped<op>::RecvWorker);  // 初始化工作线程m_worker，绑定当前对象和RecvWorker成员函数
+	memset(&m_overlapped, 0, sizeof(m_overlapped));  // 将重叠I/O结构m_overlapped内存清零
+	m_buffer.resize(1024 * 256);  // 调整接收缓冲区m_buffer大小为1024*256
+}
+
+EdoyunClient::EdoyunClient() : m_isbusy(false), m_overlapped(new ACCEPTOVERLAPPED()), m_recv(new RECVOVERLAPPED()), m_send(new SENDOVERLAPPED()), m_flags(0) {  // 构造函数，初始化成员变量，m_isbusy 为 false，新建 ACCEPTOVERLAPPED 对象给 m_overlapped
 	m_sock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);  // 创建支持重叠 I/O 的套接字
 	m_buffer.resize(1024);  // 将 m_buffer 大小调整为 1024
 	memset(&m_laddr, 0, sizeof(m_laddr));  // 初始化本地地址结构体 m_laddr 为全 0
@@ -34,8 +62,94 @@ int AcceptOverlapped<op>::AcceptWorker() {  // 模板类 AcceptOverlapped 的 Accept
 
 void EdoyunClient::SetOverlapped(PCLIENT& ptr) {  // EdoyunClient 类的 SetOverlapped 方法，参数为 PCLIENT 类型引用 ptr
 	m_overlapped->m_client = ptr;  // 将 ptr 赋值给 m_overlapped 的 m_client 成员
+	m_recv->m_client = ptr;  // 将ptr赋值给m_recv对象的m_client成员
+	m_send->m_client = ptr;  // 将ptr赋值给m_send对象的m_client成员
 }
 
 EdoyunClient::operator LPOVERLAPPED() {  // 类型转换运算符，将 EdoyunClient 对象转换为 LPOVERLAPPED 类型
 	return &m_overlapped->m_overlapped;  // 返回 m_overlapped 中 m_overlapped 成员的地址
+}
+
+LPWSABUF EdoyunClient::RecvWSABuffer()
+{
+	return &m_recv->m_wsabuffer;
+}
+
+LPWSABUF EdoyunClient::SendWSABuffer()
+{
+	return &m_send->m_wsabuffer;
+}
+
+bool EdoyunServer::StartService()
+{
+	CreateSocket();
+	sockaddr_in addr; // 定义 IPv4 地址结构
+	// 绑定套接字到指定地址和端口
+	if (bind(m_sock, (sockaddr*)&m_addr, sizeof(m_addr)) == -1) {
+		closesocket(m_sock); // 绑定失败则关闭套接字
+		m_sock = INVALID_SOCKET; // 将套接字设为无效
+		return false; // 函数返回
+	}
+	if (listen(m_sock, 3) == -1)
+	{
+		closesocket(m_sock); // 监听失败则关闭套接字
+		m_sock = INVALID_SOCKET; // 将套接字设为无效
+		return false; // 函数返回
+	}
+
+	// 1 创建 I/O 完成端口，第一个参数为无效句柄，第二个为 NULL（创建新端口），第三个为 0（无关联键），第四个为 4（并发线程数）
+	m_hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 4);
+	if (m_hIOCP == NULL) { // 判断 I/O 完成端口句柄是否为 NULL
+		closesocket(m_sock); // 关闭套接字 m_sock
+		m_sock = INVALID_SOCKET; // 将套接字 m_sock 设为无效
+		m_hIOCP = INVALID_HANDLE_VALUE; // 将 I/O 完成端口句柄设为无效
+		return false; // 函数返回
+	}
+	CreateIoCompletionPort((HANDLE)m_sock, m_hIOCP, (ULONG_PTR)this, 0); // 2 将套接字 m_sock 与 I/O 完成端口 m_hIOCP 关联，传递当前对象指针 this 作为键，最后一个参数 0 表示默认并发数
+	m_pool.Invoke();
+	m_pool.DispatchWorker(ThreadWorker(this, (FUNCTYPE)&EdoyunServer::threadIocp)); // 调用线程池的 DispatchWorker 方法，分发一个 ThreadWorker 对象，该对象封装了当前 EdoyunServer 对象（this）和其 threadIocp 成员函数（转换为 FUNCTYPE 类型的成员函数指针），用于在线程池中执行 threadIocp 函数逻辑
+	if (!NewAccept()) return false; // 调用 NewAccept 函数，若其返回值为 false（表示新接受连接操作失败），则当前函数返回 false
+	return true;
+}
+
+int EdoyunServer::threadIocp()
+{
+	DWORD transferred = 0; // 用于存储传输的字节数
+	ULONG_PTR CompletionKey = 0; // 用于存储完成键
+	OVERLAPPED* lpOverlapped = NULL; // 用于存储重叠 I/O 结构指针
+	// 从 I/O 完成端口获取完成的 I/O 操作状态，INFINITE 表示无限等待
+	if (GetQueuedCompletionStatus(m_hIOCP, &transferred, &CompletionKey, &lpOverlapped, INFINITE)) {
+		if (transferred > 0 && (CompletionKey != 0)) { // 判断传输字节数大于0且完成键非0
+			// 通过 CONTAINING_RECORD 宏，从 OVERLAPPED 结构指针获取包含它的 EdoyunOverlapped 结构指针
+			EdoyunOverlapped* pOverlapped = CONTAINING_RECORD(lpOverlapped, EdoyunOverlapped, m_overlapped);
+			switch (pOverlapped->m_operator) { // 根据操作类型枚举值进行分支处理
+			case EAccept: { // 处理接受连接操作的情况
+				ACCEPTOVERLAPPED* pOver = (ACCEPTOVERLAPPED*)pOverlapped; // 将 pOverlapped 转换为 ACCEPTOVERLAPPED 类型指针
+				m_pool.DispatchWorker(pOver->m_worker); // 调用线程池的 DispatchWorker 方法，分发 pOver 中的工作对象 m_worker
+			}
+						break;
+			case ERecv: { // 处理接收数据操作的情况
+				RECVOVERLAPPED* pOver = (RECVOVERLAPPED*)pOverlapped; // 将 pOverlapped 转换为 RECVOVERLAPPED 类型指针
+				m_pool.DispatchWorker(pOver->m_worker); // 调用线程池的 DispatchWorker 方法，分发 pOver 中的工作对象 m_worker
+			}
+					  break;
+			case ESend: { // 处理发送数据操作的情况
+				SENDOVERLAPPED* pOver = (SENDOVERLAPPED*)pOverlapped; // 将 pOverlapped 转换为 SENDOverlapped 类型指针
+				m_pool.DispatchWorker(pOver->m_worker); // 调用线程池的 DispatchWorker 方法，分发 pOver 中的工作对象 m_worker
+			}
+					  break;
+			case EError: { // 处理错误情况
+				ERROROVERLAPPED* pOver = (ERROROVERLAPPED*)pOverlapped; // 将 pOverlapped 转换为 ERROROverlapped 类型指针
+				m_pool.DispatchWorker(pOver->m_worker); // 调用线程池的 DispatchWorker 方法，分发 pOver 中的工作对象 m_worker
+			}
+					   break;
+
+			}
+		}
+		else
+		{
+			return -1;
+		}
+	}
+	return 0; // 函数返回 0
 }
