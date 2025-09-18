@@ -119,7 +119,7 @@ public:
 		return -1;
 	}
 };
-typedef SendOverlapped<ESend> SENDOVERLAPPED;
+typedef SendOverlapped<ESend> SENDOVERLAPPED; 
 
 template<EdoyunOperator> // 模板参数，推测是与操作类型相关的模板
 class ErrorOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // 定义 AcceptOverlapped 类，继承自 EdoyunOverlapped 和 ThreadFuncBase
