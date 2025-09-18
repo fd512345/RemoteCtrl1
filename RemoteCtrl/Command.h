@@ -272,7 +272,7 @@ protected:
 
 		return 0;  // 返回成功
 	}
-
+	 
 	int SendScreen(std::list<CPacket>& lstPacket, CPacket& inPacket)  // 定义发送屏幕截图的函数
 	{
 		CImage screen;//GDI  // 定义图像对象，用于存储屏幕截图

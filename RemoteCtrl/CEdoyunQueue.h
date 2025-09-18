@@ -6,6 +6,8 @@
 #include <list>                                                                 // 包含链表容器库
 #include <process.h>                                                           // 包含线程操作函数库
 #include <windows.h>                                                           // 包含Windows API头文件
+#include <list>	
+
 
 template<class T>                                                              // 模板类声明，支持任意数据类型
 class CEdoyunQueue                                                            // 线程安全队列类定义
@@ -39,9 +41,9 @@ public:
 	CEdoyunQueue() // 类的构造函数                                               // 构造函数
 	{
 		m_lock = false;                                                         // 初始化锁状态为未锁定
-		m_hCompeletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1); // 创建IOCP端口
+		m_hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1); // 创建IOCP端口
 		m_hThread = INVALID_HANDLE_VALUE;                                       // 初始化线程句柄为无效
-		if (m_hCompeletionPort != NULL) {                                       // 检查IOCP端口是否创建成功
+		if (m_hCompletionPort != NULL) {                                       // 检查IOCP端口是否创建成功
 			m_hThread = (HANDLE)_beginthread(                                   // 创建工作线程
 				&CEdoyunQueue<T>::threadEntry,                                  // 线程入口函数
 				0, this                                                        // 传递当前对象指针作为参数
@@ -52,10 +54,10 @@ public:
 	~CEdoyunQueue() // 类的析构函数                                              // 析构函数
 	{
 		m_lock = true; // 修正变量名错误 m_lbck -> m_lock                        // 设置锁状态为锁定
-		HANDLE hTemp = m_hCompeletionPort;                                      // 保存IOCP端口句柄
-		PostQueuedCompletionStatus(m_hCompeletionPort, 0, NULL, NULL);          // 投递退出信号
+		HANDLE hTemp = m_hCompletionPort;                                      // 保存IOCP端口句柄
+		PostQueuedCompletionStatus(m_hCompletionPort, 0, NULL, NULL);          // 投递退出信号
 		WaitForSingleObject(m_hThread, INFINITE);                               // 等待工作线程结束
-		m_hCompeletionPort = NULL;                                              // 置空IOCP端口句柄
+		m_hCompletionPort = NULL;                                              // 置空IOCP端口句柄
 		CloseHandle(hTemp);                                                     // 关闭IOCP端口
 		CloseHandle(m_hThread);                                                 // 关闭线程句柄
 	}
@@ -69,7 +71,7 @@ public:
 			return false;                                                       // 返回失败
 		}
 		// 向IOCP端口投递入队操作
-		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
+		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
 		if (!ret)                                                               // 检查投递是否成功
 			delete pParam;                                                      // 失败则释放参数
 		return ret;                                                             // 返回操作结果
@@ -90,7 +92,7 @@ public:
 		}
 
 		// 向IOCP端口投递出队操作
-		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
+		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
 		if (!ret)                                                               // 检查投递是否成功
 		{
 			CloseHandle(hEvent);                                                // 关闭事件句柄
@@ -122,7 +124,7 @@ public:
 		}
 
 		// 向IOCP端口投递获取大小操作
-		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
+		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
 		if (!ret)                                                               // 检查投递是否成功
 		{
 			CloseHandle(hEvent);                                                // 关闭事件句柄
@@ -147,7 +149,7 @@ public:
 
 		PPARAM* pParam = new PPARAM(EQClear, T());                             // 创建清空操作参数
 		// 向IOCP端口投递清空操作
-		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
+		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
 		if (!ret)                                                              // 检查投递是否成功
 			delete pParam;                                                     // 失败则释放参数
 		return ret;                                                            // 返回操作结果
@@ -208,7 +210,7 @@ private:
 		OVERLAPPED* pOverlapped = NULL;                                        // 重叠结构体指针
 
 		// 从IOCP端口获取完成状态
-		while (GetQueuedCompletionStatus(m_hCompeletionPort, &dwTransferred, &CompletionKey, &pOverlapped, INFINITE)) {
+		while (GetQueuedCompletionStatus(m_hCompletionPort, &dwTransferred, &CompletionKey, &pOverlapped, INFINITE)) {
 			if ((dwTransferred == 0) || (CompletionKey == NULL)) {              // 检查退出信号
 				printf("thread is prepare to exit!\r\n");                      // 输出退出信息
 				break;                                                         // 跳出循环
@@ -220,7 +222,7 @@ private:
 		}
 
 		// 处理剩余的队列项
-		while (GetQueuedCompletionStatus(m_hCompeletionPort, &dwTransferred, &CompletionKey, &pOverlapped, 0)) {
+		while (GetQueuedCompletionStatus(m_hCompletionPort, &dwTransferred, &CompletionKey, &pOverlapped, 0)) {
 			if ((dwTransferred == 0) || (CompletionKey == NULL)) {              // 检查退出信号
 				printf("thread is prepare to exit!\r\n");                      // 输出退出信息
 				continue;                                                      // 继续处理下一个
@@ -234,7 +236,7 @@ private:
 
 private:
 	std::list<T> m_lstData;                                                    // 存储数据的链表
-	HANDLE m_hCompeletionPort;                                                 // IOCP端口句柄
+	HANDLE m_hCompletionPort;                                                 // IOCP端口句柄
 	HANDLE m_hThread;                                                          // 工作线程句柄
 	std::atomic<bool> m_lock;                                                  // 原子变量，标记队列是否锁定
 };

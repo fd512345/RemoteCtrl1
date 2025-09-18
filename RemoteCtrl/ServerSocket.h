@@ -157,7 +157,7 @@ private:
 	BOOL InitSockEnv() {
 		WSADATA data;
 		// 加载Winsock 1.1版本
-		if (WSAStartup(MAKEWORD(1, 1), &data) != 0) {
+		if (WSAStartup(MAKEWORD(2, 0), &data) != 0) {
 			return FALSE;  // 加载失败
 		}
 		return TRUE;  // 加载成功
