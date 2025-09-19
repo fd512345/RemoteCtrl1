@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "Edoyunserver.h"
+#include "CEdoyunQueue.h"
+#include "EdoyunTool.h"
 #pragma warning (disable:4407)
 template<EdoyunOperator op>
 AcceptOverlapped<op>::AcceptOverlapped() {  // AcceptOverlapped 类的构造函数
@@ -13,7 +15,7 @@ AcceptOverlapped<op>::AcceptOverlapped() {  // AcceptOverlapped 类的构造函数
 template<EdoyunOperator op>
 int AcceptOverlapped<op>::AcceptWorker() {  // 模板类 AcceptOverlapped 的 AcceptWorker 方法
 	INT lLength = 0, rLength = 0;  // 定义存储本地、远程地址长度的变量
-	if (*(LPDWORD)*m_client.get() > 0) {  // 若 m_client 智能指针指向对象的双字值大于 0
+	if (*(LPDWORD)*m_client > 0) {  // 若 m_client 智能指针指向对象的双字值大于 0
 		GetAcceptExSockaddrs(*m_client, 0,
 			sizeof(sockaddr_in) + 16, sizeof(sockaddr_in) + 16,
 			(sockaddr**)m_client->GetLocalAddr(), &lLength, // 本地地址
@@ -53,7 +55,10 @@ inline RecvOverlapped<op>::RecvOverlapped() {
 	m_buffer.resize(1024 * 256);  // 调整接收缓冲区m_buffer大小为1024*256
 }
 
-EdoyunClient::EdoyunClient() : m_isbusy(false), m_overlapped(new ACCEPTOVERLAPPED()), m_recv(new RECVOVERLAPPED()), m_send(new SENDOVERLAPPED()), m_flags(0) {  // 构造函数，初始化成员变量，m_isbusy 为 false，新建 ACCEPTOVERLAPPED 对象给 m_overlapped
+EdoyunClient::EdoyunClient() : m_isbusy(false),
+m_overlapped(new ACCEPTOVERLAPPED()), m_recv(new RECVOVERLAPPED()),
+m_send(new SENDOVERLAPPED()), m_flags(0),
+m_vecSend(this, (SENDCALLBACK)&EdoyunClient::SendData) {  // 构造函数，初始化成员变量，m_isbusy 为 false，新建 ACCEPTOVERLAPPED 对象给 m_overlapped
 	m_sock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);  // 创建支持重叠 I/O 的套接字
 	m_buffer.resize(1024);  // 将 m_buffer 大小调整为 1024
 	memset(&m_laddr, 0, sizeof(m_laddr));  // 初始化本地地址结构体 m_laddr 为全 0
@@ -61,9 +66,9 @@ EdoyunClient::EdoyunClient() : m_isbusy(false), m_overlapped(new ACCEPTOVERLAPPE
 }
 
 void EdoyunClient::SetOverlapped(PCLIENT& ptr) {  // EdoyunClient 类的 SetOverlapped 方法，参数为 PCLIENT 类型引用 ptr
-	m_overlapped->m_client = ptr;  // 将 ptr 赋值给 m_overlapped 的 m_client 成员
-	m_recv->m_client = ptr;  // 将ptr赋值给m_recv对象的m_client成员
-	m_send->m_client = ptr;  // 将ptr赋值给m_send对象的m_client成员
+	m_overlapped->m_client = ptr.get();  // 将 ptr 赋值给 m_overlapped 的 m_client 成员
+	m_recv->m_client = ptr.get();  // 将ptr赋值给m_recv对象的m_client成员
+	m_send->m_client = ptr.get();  // 将ptr赋值给m_send对象的m_client成员
 }
 
 EdoyunClient::operator LPOVERLAPPED() {  // 类型转换运算符，将 EdoyunClient 对象转换为 LPOVERLAPPED 类型
@@ -78,6 +83,49 @@ LPWSABUF EdoyunClient::RecvWSABuffer()
 LPWSABUF EdoyunClient::SendWSABuffer()
 {
 	return &m_send->m_wsabuffer;
+}
+
+int EdoyunClient::Recv()
+{
+	int ret = recv(m_sock, m_buffer.data() + m_used, m_buffer.size() - m_used, 0);  // 调用recv函数从套接字m_sock接收数据，存储到m_buffer中
+	if (ret <= 0)return -1;
+	m_used += (size_t)ret;
+	//解析数据
+	return 0;
+}
+
+int EdoyunClient::Send(void* buffer, size_t nSize)
+{
+	std::vector<char> data(nSize);  // 创建大小为nSize的char类型vector
+	memcpy(data.data(), buffer, nSize);  // 将buffer指向的nSize字节数据复制到data的内存区域
+	if (m_vecSend.PushBack(data)) {  // 调用m_vecSend的PushBack方法，将data加入容器
+		return 0;  // 加入成功返回0
+	}
+	return -1;  // 加入失败返回-1
+}
+
+int EdoyunClient::SendData(std::vector<char>& data)
+{
+	if (m_vecSend.Size() > 0) {                          // 检查发送缓冲区是否有数据需要发送
+		int ret = WSASend(m_sock, SendWSABuffer(), 1, &m_received, m_flags, &m_send->m_overlapped, NULL);  // 调用WSAAsyncSelect模型下的WSASend函数发送数据
+		if (ret != 0 && (WSAGetLastError() != WSA_IO_PENDING)) {  // 判断发送是否失败且错误不是重叠I/O操作正在进行
+			CEdoyunTool::ShowError();                     // 调用工具类显示错误信息
+			return -1;                                    // 返回-1表示发送操作出错
+		}
+	}
+	return 0;                                             // 返回0表示发送操作成功或无需发送数据
+}
+
+EdoyunServer::~EdoyunServer()
+{
+	closesocket(m_sock);
+	std::map<SOCKET, PCLIENT>::iterator it = m_client.begin();  // 获取m_client映射的起始迭代器
+	for (; it != m_client.end(); it++) {                        // 遍历m_client映射的所有元素
+		it->second.reset();                                     // 对每个元素的第二个值（PCLIENT类型）调用reset方法
+	}
+	m_client.clear();                                           // 清空m_client映射中的所有元素
+	CloseHandle(m_hIOCP);	
+	m_pool.Stop();
 }
 
 bool EdoyunServer::StartService()
@@ -100,7 +148,7 @@ bool EdoyunServer::StartService()
 	// 1 创建 I/O 完成端口，第一个参数为无效句柄，第二个为 NULL（创建新端口），第三个为 0（无关联键），第四个为 4（并发线程数）
 	m_hIOCP = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 4);
 	if (m_hIOCP == NULL) { // 判断 I/O 完成端口句柄是否为 NULL
-		closesocket(m_sock); // 关闭套接字 m_sock
+		closesocket(m_sock); // 关闭套	接字 m_sock
 		m_sock = INVALID_SOCKET; // 将套接字 m_sock 设为无效
 		m_hIOCP = INVALID_HANDLE_VALUE; // 将 I/O 完成端口句柄设为无效
 		return false; // 函数返回

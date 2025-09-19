@@ -27,8 +27,11 @@ public:
 	std::vector<char> m_buffer;//缓冲区
 	ThreadWorker m_worker;//处理函数
 	EdoyunServer* m_server;//服务器对象
-	PCLIENT m_client;//对应的客户端
+	EdoyunClient* m_client;//对应的客户端
 	WSABUF m_wsabuffer;
+	virtual ~EdoyunOverlapped() {  // 定义 EdoyunOverlapped 类的虚析构函数，确保派生类对象析构时能正确调用
+		m_buffer.clear();          // 清空 m_buffer 容器（如存储数据的缓冲区），释放相关资源
+	}
 };
 
 template<EdoyunOperator>class AcceptOverlapped;  // 前向声明模板类 AcceptOverlapped
@@ -41,13 +44,18 @@ template<EdoyunOperator>class SendOverlapped;  // 前向声明模板类 SendOverlapped
 typedef SendOverlapped<ESend> SENDOVERLAPPED;  // 定义 SENDOVERLAPPED 为 SendOverlapped<ESend> 的类型别名
 
 
-class EdoyunClient { // 定义 EdoyunClient 类，用于表示客户端
+class EdoyunClient :public  ThreadFuncBase { // 定义 EdoyunClient 类，用于表示客户端
 
 
 public:
 	EdoyunClient();
 	~EdoyunClient() { // 析构函数
+		m_buffer.clear();
 		closesocket(m_sock); // 关闭套接字
+		m_recv.reset();
+		m_send.reset();
+		m_overlapped.reset();
+		m_vecSend.Clear();
 	}
 
 	void SetOverlapped(PCLIENT& ptr);
@@ -68,15 +76,11 @@ public:
 	sockaddr_in* GetLocalAddr() { return &m_laddr; }  // 获取本地地址，返回 m_laddr 的引用
 	sockaddr_in* GetRemoteAddr() { return &m_raddr; }  // 获取远程地址，返回 m_raddr 的引用
 	size_t GetBufferSize()const { return m_buffer.size(); }  // 常量成员函数，返回m_buffer的大小
-	int Recv() {
-		int ret = recv(m_sock, m_buffer.data() + m_used, m_buffer.size() - m_used, 0);  // 调用recv函数从套接字m_sock接收数据，存储到m_buffer中
-		if (ret <= 0)return -1;
-		m_used += (size_t)ret;
-		//解析数据
-		return 0;
-	}
+	int Recv();
+	int Send(void* buffer, size_t nSize);
+	int SendData(std::vector<char>& data);// 定义一个引用变量data，其引用的对象是std::vector<char>类型的容器
 private:
-private:
+
 	SOCKET m_sock; // 客户端套接字
 	DWORD m_received;
 	DWORD m_flags;
@@ -88,6 +92,7 @@ private:
 	sockaddr_in m_laddr; // 地址结构，用于local端地址信息
 	sockaddr_in m_raddr; // 地址结构，用于remote端地址信息
 	bool m_isbusy;
+	EdoyunSendQueue<std::vector<char>> m_vecSend;//发送数据队列
 };
 
 template<EdoyunOperator> // 模板参数，推测是与操作类型相关的模板
@@ -116,10 +121,11 @@ class SendOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // 定义 
 public:
 	SendOverlapped();
 	int SendWorker() { // 定义 AcceptWorker 成员函数，用于处理接受连接相关工作
+
 		return -1;
 	}
 };
-typedef SendOverlapped<ESend> SENDOVERLAPPED; 
+typedef SendOverlapped<ESend> SENDOVERLAPPED;
 
 template<EdoyunOperator> // 模板参数，推测是与操作类型相关的模板
 class ErrorOverlapped : public EdoyunOverlapped, public ThreadFuncBase { // 定义 AcceptOverlapped 类，继承自 EdoyunOverlapped 和 ThreadFuncBase
@@ -151,7 +157,7 @@ public:
 		m_addr.sin_addr.s_addr = inet_addr(ip.c_str()); // 设置 IP 地址
 
 	}
-	~EdoyunServer() {} // 析构函数，此处为空，可能后续补充资源释放逻辑
+	~EdoyunServer();// 析构函数，此处为空，可能后续补充资源释放逻辑
 	bool StartService();
 	bool NewAccept()
 	{

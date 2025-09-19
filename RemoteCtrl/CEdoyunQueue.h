@@ -1,242 +1,270 @@
-#pragma once                                                                   // 防止头文件重复包含
+#pragma once
+#include "pch.h"
+#include <atomic>
+#include <list>
+#include "EdoyunThread.h"
 
-#include "pch.h"	                                                            // 预编译头文件
-#include <atomic>                                                               // 包含原子操作库
-#include <mutex>                                                                // 包含互斥量库
-#include <list>                                                                 // 包含链表容器库
-#include <process.h>                                                           // 包含线程操作函数库
-#include <windows.h>                                                           // 包含Windows API头文件
-#include <list>	
-
-
-template<class T>                                                              // 模板类声明，支持任意数据类型
-class CEdoyunQueue                                                            // 线程安全队列类定义
+template<class T>
+class CEdoyunQueue
 {//线程安全的队列（利用IOCP实现）
 public:
-	enum {                                                                      // 操作类型枚举
-		EQNone,                                                                 // 无操作
-		EQPush,                                                                 // 入队操作
-		EQPop,                                                                  // 出队操作
-		EQSize,                                                                 // 获取大小操作
-		EQClear                                                                 // 清空队列操作
+	enum {
+		EQNone,
+		EQPush,
+		EQPop,
+		EQSize,
+		EQClear
 	};
-
-	typedef struct IocpParam {                                                  // IOCP操作参数结构体
-		size_t nOperator; // 操作标识，用于区分不同的操作类型                   // 操作类型标识
-		T Data; // 存储相关的数据                                               // 数据存储变量
-		HANDLE hEvent;//pop操作需要的                                          // 事件句柄，用于同步
-
-		IocpParam(int op, const T& data, HANDLE hEve = NULL) {                  // 结构体构造函数
-			nOperator = op; // 将传入的操作标识赋值给结构体成员nOperator         // 初始化操作类型
-			Data = data; // 将传入的数据赋值给结构体成员Data                     // 初始化数据
-			hEvent = hEve;                                                      // 初始化事件句柄
+	typedef struct IocpParam {
+		size_t nOperator;//操作
+		T Data;//数据
+		HANDLE hEvent;//pop操作需要的
+		IocpParam(int op, const T& data, HANDLE hEve = NULL) {
+			nOperator = op;
+			Data = data;
+			hEvent = hEve;
 		}
-		IocpParam()                                                             // 默认构造函数
-		{
-			nOperator = EQNone;                                                 // 默认为无操作
+		IocpParam() {
+			nOperator = EQNone;
 		}
-	} PPARAM;//Post Parameter 用于投递信息的结构体                              // 定义结构体别名
-
+	}PPARAM;//Post Parameter 用于投递信息的结构体
 public:
-	CEdoyunQueue() // 类的构造函数                                               // 构造函数
-	{
-		m_lock = false;                                                         // 初始化锁状态为未锁定
-		m_hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1); // 创建IOCP端口
-		m_hThread = INVALID_HANDLE_VALUE;                                       // 初始化线程句柄为无效
-		if (m_hCompletionPort != NULL) {                                       // 检查IOCP端口是否创建成功
-			m_hThread = (HANDLE)_beginthread(                                   // 创建工作线程
-				&CEdoyunQueue<T>::threadEntry,                                  // 线程入口函数
-				0, this                                                        // 传递当前对象指针作为参数
+	CEdoyunQueue() {
+		m_lock = false;
+		m_hCompeletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1);
+		m_hThread = INVALID_HANDLE_VALUE;
+		if (m_hCompeletionPort != NULL) {
+			m_hThread = (HANDLE)_beginthread(
+				&CEdoyunQueue<T>::threadEntry,
+				0, this
 			);
 		}
 	}
-
-	~CEdoyunQueue() // 类的析构函数                                              // 析构函数
-	{
-		m_lock = true; // 修正变量名错误 m_lbck -> m_lock                        // 设置锁状态为锁定
-		HANDLE hTemp = m_hCompletionPort;                                      // 保存IOCP端口句柄
-		PostQueuedCompletionStatus(m_hCompletionPort, 0, NULL, NULL);          // 投递退出信号
-		WaitForSingleObject(m_hThread, INFINITE);                               // 等待工作线程结束
-		m_hCompletionPort = NULL;                                              // 置空IOCP端口句柄
-		CloseHandle(hTemp);                                                     // 关闭IOCP端口
-		CloseHandle(m_hThread);                                                 // 关闭线程句柄
-	}
-
-	bool PushBack(const T& data)                                                // 入队操作
-	{
-		PPARAM* pParam = new PPARAM(EQPush, data);                              // 创建入队操作参数
-		if (m_lock)                                                             // 检查是否锁定
-		{
-			delete pParam;                                                      // 释放参数对象
-			return false;                                                       // 返回失败
+	virtual ~CEdoyunQueue() {
+		if (m_lock)return;
+		m_lock = true;
+		PostQueuedCompletionStatus(m_hCompeletionPort, 0, NULL, NULL);
+		WaitForSingleObject(m_hThread, INFINITE);
+		if (m_hCompeletionPort != NULL) {
+			HANDLE hTemp = m_hCompeletionPort;
+			m_hCompeletionPort = NULL;
+			CloseHandle(hTemp);
 		}
-		// 向IOCP端口投递入队操作
-		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
-		if (!ret)                                                               // 检查投递是否成功
-			delete pParam;                                                      // 失败则释放参数
-		return ret;                                                             // 返回操作结果
 	}
-
-	bool PopFront(T& data)                                                      // 出队操作
-	{
-		// 创建事件用于同步
+	bool PushBack(const T& data) {
+		IocpParam* pParam = new IocpParam(EQPush, data);
+		if (m_lock) {
+			delete pParam;
+			return false;
+		}
+		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
+		if (ret == false)delete pParam;
+		//printf("push back done %d %08p\r\n", ret, (void*)pParam);
+		return ret;
+	}
+	virtual bool PopFront(T& data) {
 		HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-		if (!hEvent)                                                            // 检查事件是否创建成功
-			return false;                                                       // 失败返回
-
-		PPARAM Param(EQPop, data, hEvent);                                      // 创建出队操作参数
-		if (m_lock)                                                             // 检查是否锁定
-		{
-			CloseHandle(hEvent);                                                // 关闭事件句柄
-			return false;                                                       // 返回失败
+		IocpParam Param(EQPop, data, hEvent);
+		if (m_lock) {
+			if (hEvent)CloseHandle(hEvent);
+			return false;
 		}
-
-		// 向IOCP端口投递出队操作
-		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
-		if (!ret)                                                               // 检查投递是否成功
-		{
-			CloseHandle(hEvent);                                                // 关闭事件句柄
-			return false;                                                       // 返回失败
+		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
+		if (ret == false) {
+			CloseHandle(hEvent);
+			return false;
 		}
-
-		// 等待操作完成
-		ret = (WaitForSingleObject(hEvent, INFINITE) == WAIT_OBJECT_0);
-		if (ret)                                                                // 检查操作是否成功
-		{
-			data = Param.Data;                                                  // 获取出队数据
+		ret = WaitForSingleObject(hEvent, INFINITE) == WAIT_OBJECT_0;
+		if (ret) {
+			data = Param.Data;
 		}
-		CloseHandle(hEvent);                                                    // 关闭事件句柄
-		return ret;                                                             // 返回操作结果
+		return ret;
 	}
-
-	size_t Size()                                                               // 获取队列大小
-	{
-		// 创建事件用于同步
+	size_t Size() {
 		HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-		if (!hEvent)                                                            // 检查事件是否创建成功
-			return -1;                                                          // 失败返回
-
-		PPARAM Param(EQSize, T(), hEvent);                                      // 创建获取大小操作参数
-		if (m_lock)                                                             // 检查是否锁定
-		{
-			CloseHandle(hEvent);                                                // 关闭事件句柄
-			return -1;                                                          // 返回失败
+		IocpParam Param(EQSize, T(), hEvent);
+		if (m_lock) {
+			if (hEvent)CloseHandle(hEvent);
+			return -1;
 		}
-
-		// 向IOCP端口投递获取大小操作
-		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
-		if (!ret)                                                               // 检查投递是否成功
-		{
-			CloseHandle(hEvent);                                                // 关闭事件句柄
-			return -1;                                                          // 返回失败
+		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)&Param, NULL);
+		if (ret == false) {
+			CloseHandle(hEvent);
+			return -1;
 		}
-
-		// 等待操作完成
-		ret = (WaitForSingleObject(hEvent, INFINITE) == WAIT_OBJECT_0);
-		CloseHandle(hEvent);                                                    // 关闭事件句柄
-
-		if (ret)                                                                // 检查操作是否成功
-		{
-			return Param.nOperator;                                             // 返回队列大小
+		ret = WaitForSingleObject(hEvent, INFINITE) == WAIT_OBJECT_0;
+		if (ret) {
+			return Param.nOperator;
 		}
-		return -1;                                                              // 返回失败
+		return -1;
 	}
-
-	bool Clear()                                                                // 清空队列
-	{
-		if (m_lock)                                                            // 检查是否锁定
-			return false;                                                     // 返回失败
-
-		PPARAM* pParam = new PPARAM(EQClear, T());                             // 创建清空操作参数
-		// 向IOCP端口投递清空操作
-		bool ret = PostQueuedCompletionStatus(m_hCompletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
-		if (!ret)                                                              // 检查投递是否成功
-			delete pParam;                                                     // 失败则释放参数
-		return ret;                                                            // 返回操作结果
+	bool Clear() {
+		if (m_lock)return false;
+		IocpParam* pParam = new IocpParam(EQClear, T());
+		bool ret = PostQueuedCompletionStatus(m_hCompeletionPort, sizeof(PPARAM), (ULONG_PTR)pParam, NULL);
+		if (ret == false)delete pParam;
+		//printf("Clear %08p\r\n", (void*)pParam);
+		return ret;
 	}
-
-private:
-	static void threadEntry(void* arg)                                         // 线程入口函数
-	{
-		// 将参数转换为当前类指针
-		CEdoyunQueue<T>* thiz = static_cast<CEdoyunQueue<T>*>(arg);
-		if (thiz)                                                               // 检查指针有效性
-			thiz->threadMain();                                                // 调用线程主函数
-		_endthread();                                                           // 结束线程
+protected:
+	static void threadEntry(void* arg) {
+		CEdoyunQueue<T>* thiz = (CEdoyunQueue<T>*)arg;
+		thiz->threadMain();
+		_endthread();
 	}
-
-	void DealParam(PPARAM* pParam)                                             // 处理操作参数
-	{
-		if (!pParam) return;                                                   // 检查参数有效性
-
-		switch (pParam->nOperator)                                             // 根据操作类型处理
+	virtual void DealParam(PPARAM* pParam) {
+		switch (pParam->nOperator)
 		{
-		case EQPush:                                                           // 入队操作
-			m_lstData.push_back(pParam->Data);                                 // 将数据加入队列
-			delete pParam;                                                     // 释放参数对象
+		case EQPush:
+			m_lstData.push_back(pParam->Data);
+			delete pParam;
+			//printf("delete %08p\r\n", (void*)pParam);
 			break;
-
-		case EQPop:                                                            // 出队操作
-			if (!m_lstData.empty()) {                                          // 检查队列是否为空
-				pParam->Data = m_lstData.front();                              // 获取队首元素
-				m_lstData.pop_front();                                         // 移除队首元素
+		case EQPop:
+			if (m_lstData.size() > 0) {
+				pParam->Data = m_lstData.front();
+				m_lstData.pop_front();
 			}
-			if (pParam->hEvent != NULL)                                        // 检查事件句柄
-				SetEvent(pParam->hEvent);                                      // 触发事件通知完成
+			if (pParam->hEvent != NULL)SetEvent(pParam->hEvent);
 			break;
-
-		case EQSize:                                                           // 获取大小操作
-			pParam->nOperator = m_lstData.size();                              // 保存队列大小
-			if (pParam->hEvent != NULL)                                        // 检查事件句柄
-				SetEvent(pParam->hEvent);                                      // 触发事件通知完成
+		case EQSize:
+			pParam->nOperator = m_lstData.size();
+			if (pParam->hEvent != NULL)
+				SetEvent(pParam->hEvent);
 			break;
-
-		case EQClear:                                                          // 清空队列操作
-			m_lstData.clear();                                                 // 清空队列
-			delete pParam;                                                     // 释放参数对象
+		case EQClear:
+			m_lstData.clear();
+			delete pParam;
+			//printf("delete %08p\r\n", (void*)pParam);
 			break;
-
-		default:                                                               // 未知操作
-			OutputDebugStringA("unknown operator!\r\n");                        // 输出调试信息
+		default:
+			OutputDebugStringA("unknown operator!\r\n");
 			break;
 		}
 	}
-
-	void threadMain()                                                          // 线程主函数
-	{
-		DWORD dwTransferred = 0;                                               // 传输字节数
-		PPARAM* pParam = NULL;                                                 // 操作参数指针
-		ULONG_PTR CompletionKey = 0;                                           // 完成键
-		OVERLAPPED* pOverlapped = NULL;                                        // 重叠结构体指针
-
-		// 从IOCP端口获取完成状态
-		while (GetQueuedCompletionStatus(m_hCompletionPort, &dwTransferred, &CompletionKey, &pOverlapped, INFINITE)) {
-			if ((dwTransferred == 0) || (CompletionKey == NULL)) {              // 检查退出信号
-				printf("thread is prepare to exit!\r\n");                      // 输出退出信息
-				break;                                                         // 跳出循环
+	virtual void threadMain() {
+		DWORD dwTransferred = 0;
+		PPARAM* pParam = NULL;
+		ULONG_PTR CompletionKey = 0;
+		OVERLAPPED* pOverlapped = NULL;
+		while (GetQueuedCompletionStatus(
+			m_hCompeletionPort,
+			&dwTransferred,
+			&CompletionKey,
+			&pOverlapped, INFINITE))
+		{
+			if ((dwTransferred == 0) || (CompletionKey == NULL)) {
+				printf("thread is prepare to exit!\r\n");
+				break;
 			}
 
-			// 转换获取操作参数
-			pParam = static_cast<PPARAM*>(reinterpret_cast<void*>(CompletionKey));
-			DealParam(pParam);                                                 // 处理操作参数
+			pParam = (PPARAM*)CompletionKey;
+			DealParam(pParam);
 		}
-
-		// 处理剩余的队列项
-		while (GetQueuedCompletionStatus(m_hCompletionPort, &dwTransferred, &CompletionKey, &pOverlapped, 0)) {
-			if ((dwTransferred == 0) || (CompletionKey == NULL)) {              // 检查退出信号
-				printf("thread is prepare to exit!\r\n");                      // 输出退出信息
-				continue;                                                      // 继续处理下一个
+		while (GetQueuedCompletionStatus(
+			m_hCompeletionPort,
+			&dwTransferred,
+			&CompletionKey,
+			&pOverlapped, 0))
+		{
+			if ((dwTransferred == 0) || (CompletionKey == NULL)) {
+				printf("thread is prepare to exit!\r\n");
+				continue;
 			}
-
-			// 转换获取操作参数
-			pParam = static_cast<PPARAM*>(reinterpret_cast<void*>(CompletionKey));
-			DealParam(pParam);                                                 // 处理操作参数
+			pParam = (PPARAM*)CompletionKey;
+			DealParam(pParam);
 		}
+		HANDLE hTemp = m_hCompeletionPort;
+		m_hCompeletionPort = NULL;
+		CloseHandle(hTemp);
 	}
-
-private:
-	std::list<T> m_lstData;                                                    // 存储数据的链表
-	HANDLE m_hCompletionPort;                                                 // IOCP端口句柄
-	HANDLE m_hThread;                                                          // 工作线程句柄
-	std::atomic<bool> m_lock;                                                  // 原子变量，标记队列是否锁定
+protected:
+	std::list<T> m_lstData;
+	HANDLE m_hCompeletionPort;
+	HANDLE m_hThread;
+	std::atomic<bool> m_lock;//队列正在析构
 };
+
+
+
+template<class T>
+class EdoyunSendQueue :public CEdoyunQueue<T>, public ThreadFuncBase
+{
+public:
+	typedef int (ThreadFuncBase::* EDYCALLBACK)(T& data);
+	EdoyunSendQueue(ThreadFuncBase* obj, EDYCALLBACK callback)
+		:CEdoyunQueue<T>(), m_base(obj), m_callback(callback)
+	{
+		m_thread.Start();
+		m_thread.UpdateWorker(::ThreadWorker(this, (FUNCTYPE)&EdoyunSendQueue<T>::threadTick));
+	}
+	virtual ~EdoyunSendQueue() {
+		m_base = NULL;
+		m_callback = NULL;
+		m_thread.Stop();
+
+	}
+
+protected:
+	virtual bool PopFront(T& data) {
+		return false;
+	};
+	bool PopFront() {
+		typename CEdoyunQueue<T>::IocpParam* Param = new typename CEdoyunQueue<T>::IocpParam(CEdoyunQueue<T>::EQPop, T());
+		if (CEdoyunQueue<T>::m_lock) {
+			delete Param;
+			return false;
+		}
+		bool ret = PostQueuedCompletionStatus(CEdoyunQueue<T>::m_hCompeletionPort, sizeof(*Param), (ULONG_PTR)&Param, NULL);
+		if (ret == false) {
+			delete Param;
+			return false;
+		}
+		return ret;
+	}
+	int threadTick() {
+		if (WaitForSingleObject(CEdoyunQueue<T>::m_hThread, 0) != WAIT_TIMEOUT)  // 检查线程m_hThread是否未处于超时状态（即线程已结束或可立即响应）
+			return -1;                                          // 若线程未超时，直接返回0
+		if (CEdoyunQueue<T>::m_lstData.size() > 0) {           // 检查队列CEdoyunQueue<T>的m_lstData成员元素数量是否大于0
+			PopFront();                                        // 若队列有元素，调用PopFront方法弹出队首元素
+		}
+		return 0;                                              // 执行完毕，返回0
+	}
+	virtual void DealParam(typename CEdoyunQueue<T>::PPARAM* pParam) {
+		switch (pParam->nOperator)
+		{
+		case CEdoyunQueue<T>::EQPush:
+			CEdoyunQueue<T>::m_lstData.push_back(pParam->Data);
+			delete pParam;
+			//printf("delete %08p\r\n", (void*)pParam);
+			break;
+		case CEdoyunQueue<T>::EQPop:
+			if (CEdoyunQueue<T>::m_lstData.size() > 0) {
+				pParam->Data = CEdoyunQueue<T>::m_lstData.front();
+				if ((m_base->*m_callback)(pParam->Data) == 0)
+					CEdoyunQueue<T>::m_lstData.pop_front();
+			}
+			delete pParam;
+			break;
+		case CEdoyunQueue<T>::EQSize:
+			pParam->nOperator = CEdoyunQueue<T>::m_lstData.size();
+			if (pParam->hEvent != NULL)
+				SetEvent(pParam->hEvent);
+			break;
+		case CEdoyunQueue<T>::EQClear:
+			CEdoyunQueue<T>::m_lstData.clear();
+			delete pParam;
+			//printf("delete %08p\r\n", (void*)pParam);
+			break;
+		default:
+			OutputDebugStringA("unknown operator!\r\n");
+			break;
+		}
+	}
+private:
+	ThreadFuncBase* m_base;
+	EDYCALLBACK m_callback;
+	EdoyunThread m_thread;
+};
+
+typedef EdoyunSendQueue<std::vector<char>>::EDYCALLBACK  SENDCALLBACK;

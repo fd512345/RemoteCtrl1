@@ -30,7 +30,7 @@ public:
 		}
 		return *this;
 	}
-//	ThreadWorker& operator=(ThreadWorker&& worker) = delete;
+	//	ThreadWorker& operator=(ThreadWorker&& worker) = delete;
 
 	int operator()() { // 函数调用运算符重载，使对象可像函数一样调用
 		if (IsValid()) { // 判断对象和函数指针是否有效
@@ -56,6 +56,7 @@ public:
 	EdoyunThread()
 	{ // EdoyunThread 类的构造函数
 		m_hThread = NULL; // 初始化线程句柄为 NULL
+		m_bStatus = false;
 	}
 
 	~EdoyunThread()
@@ -73,7 +74,7 @@ public:
 		return m_bStatus;
 	}
 
-	bool IsValid() 
+	bool IsValid()
 	{ // 判断线程是否有效 true有效 false表示线程异常or已经终止
 		if (m_hThread == NULL || (m_hThread == INVALID_HANDLE_VALUE)) return false; // 若线程句柄为 NULL 或无效句柄值，返回 false
 		return WaitForSingleObject(m_hThread, 0) == WAIT_TIMEOUT; // 等待线程，超时时间为 0，若返回 WAIT_TIMEOUT 表示线程正在运行，返回 true
@@ -84,42 +85,56 @@ public:
 		if (m_bStatus == false) return true; // 如果状态 m_bStatus 为 false，直接返回 true
 		m_bStatus = false; // 将状态 m_bStatus 设为 false
 
-		bool ret = WaitForSingleObject(m_hThread, INFINITE) == WAIT_OBJECT_0; // 等待线程 m_hThread 结束，若等待成功（返回 WAIT_OBJECT_0）则返回 true，否则返回 false
+		DWORD ret = WaitForSingleObject(m_hThread, 1000) == WAIT_OBJECT_0; // 等待线程 m_hThread 结束，若等待成功（返回 WAIT_OBJECT_0）则返回 true，否则返回 false
+		if (ret == WAIT_TIMEOUT) {  // 判断等待线程返回结果是否为超时
+			TerminateThread(m_hThread, -1);  // 若超时，强制终止线程m_hThread，退出码为-1
+		}
 		UpdateWorker();
-		return ret;
+		return WAIT_OBJECT_0;
 	}
 
 	void UpdateWorker(const ::ThreadWorker& worker = ::ThreadWorker()) {
-		if (!worker.IsValid()) {  // 检查 worker 是否有效
-			m_worker.store(NULL);  // 若无效，将 m_worker 存储为 NULL
-			return;  // 直接返回，不再执行后续代码
-		}
-		if (m_worker.load() != NULL) {  // 检查 m_worker 中存储的指针是否非空
+		if (m_worker.load() != NULL && (m_worker.load() != &worker)) {  // 检查 m_worker 中存储的指针是否非空
 			::ThreadWorker* pWorker = m_worker.load();  // 加载 m_worker 中的指针到 pWorker
 			m_worker.store(NULL);  // 将 m_worker 中存储的指针置为 NULL
 			delete pWorker;  // 释放 pWorker 指向的 ThreadWorker 对象内存
+		}
+		if (m_worker.load() == &worker) return;  // 检查原子操作加载的m_worker是否等于worker的地址，若是则直接返回，避免重复操作
+		if (!worker.IsValid()) {  // 检查 worker 是否有效
+			m_worker.store(NULL);  // 将 m_worker 中存储的指针置为 NULL
+			return;
 		}
 		m_worker.store(new ::ThreadWorker(worker));  // 新建 ThreadWorker 对象并存储其指针到 m_worker
 	}
 
 	//true表示空闲 false表示已经分配了工作，注释：说明 IsIdle 方法返回 true 时线程空闲，返回 false 时已分配工作
 	bool IsIdle() { // 定义 IsIdle 方法，判断线程是否空闲
+		if (m_worker.load() == NULL)
+		{
+			return true;
+		}
 		return !m_worker.load()->IsValid(); // 加载 m_worker 并判断其是否有效，取反后返回，即若 m_worker 无效则返回 true（表示空闲），有效则返回 false（表示已分配工作）
 	}
 
 private:
 	void ThreadWorker() { // 虚函数，线程工作逻辑，子类可重写
 		while (m_bStatus) { // 当状态 m_bStatus 为真时循环
+			if (m_worker.load() == NULL) {  // 检查工作线程对象指针是否为空
+				Sleep(1);                    // 若为空，线程休眠1毫秒
+				continue;                    // 休眠后继续循环，再次检查工作线程对象指针状态
+			}
 			::ThreadWorker worker = *m_worker.load(); // 加载 ThreadWorker 对象到 worker
 			if (worker.IsValid()) { // 判断 worker 是否有效
-				int ret = worker(); // 调用 worker 的函数调用运算符，执行相关操作并获取返回值
-				if (ret != 0) { // 如果返回值不等于 0
-					CString str; // 定义 CString 类型变量 str
-					str.Format(_T("thread found warning code %d\r\n"), ret); // 格式化字符串，包含警告代码 ret
-					OutputDebugString(str); // 输出调试字符串
-				}
-				if (ret < 0) { // 如果返回值小于 0
-					m_worker.store(NULL);
+				if (WaitForSingleObject(m_hThread, 0) == WAIT_TIMEOUT) {  // 检查线程m_hThread是否处于超时状态（即线程仍在运行，没有立即结束）
+					int ret = worker(); // 调用 worker 的函数调用运算符，执行相关操作并获取返回值
+					if (ret != 0) { // 如果返回值不等于 0
+						CString str; // 定义 CString 类型变量 str
+						str.Format(_T("thread found warning code %d\r\n"), ret); // 格式化字符串，包含警告代码 ret
+						OutputDebugString(str); // 输出调试字符串
+					}
+					if (ret < 0) { // 如果返回值小于 0
+						m_worker.store(NULL);
+					}
 				}
 			}
 			else { // 如果 worker 无效
@@ -152,6 +167,10 @@ public:
 	EdoyunThreadPool() {} // 默认构造函数
 	~EdoyunThreadPool() {
 		Stop();
+		for (size_t i = 0; i < m_threads.size(); i++) {  // 遍历线程指针数组m_threads
+			delete m_threads[i];                         // 释放数组中第i个线程指针指向的动态分配的线程对象内存
+			m_threads[i] = NULL;                         // 将该位置的指针置为NULL，防止野指针
+		}
 		m_threads.clear();
 	} // 析构函数
 	bool Invoke() { // 调用函数，用于启动线程池中的线程
