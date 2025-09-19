@@ -12,7 +12,7 @@ class ThreadWorker { // 线程工作类，用于封装线程执行的成员函数及对象
 public:
 	ThreadWorker() : thiz(NULL), func(NULL) {} // 默认构造函数，初始化对象指针和函数指针为 NULL
 
-	ThreadWorker(ThreadFuncBase* obj, FUNCTYPE f) : thiz(obj), func(f) {} // 带参构造函数，初始化对象指针和函数指针
+	ThreadWorker(void* obj, FUNCTYPE f) : thiz((ThreadFuncBase*)obj), func(f) {} // 带参构造函数，初始化对象指针和函数指针
 
 
 	ThreadWorker(const ThreadWorker& worker)
@@ -90,12 +90,13 @@ public:
 			TerminateThread(m_hThread, -1);  // 若超时，强制终止线程m_hThread，退出码为-1
 		}
 		UpdateWorker();
-		return WAIT_OBJECT_0;
+		return ret == WAIT_OBJECT_0;
 	}
-
+							
 	void UpdateWorker(const ::ThreadWorker& worker = ::ThreadWorker()) {
 		if (m_worker.load() != NULL && (m_worker.load() != &worker)) {  // 检查 m_worker 中存储的指针是否非空
 			::ThreadWorker* pWorker = m_worker.load();  // 加载 m_worker 中的指针到 pWorker
+			TRACE("delete pWorker = %08X m_worker = %08X\r\n", pWorker, m_worker.load());  // 以8位十六进制格式输出要删除的pWorker指针值，以及m_worker原子加载的指针值，换行（用于调试，查看删除前相关指针状态）
 			m_worker.store(NULL);  // 将 m_worker 中存储的指针置为 NULL
 			delete pWorker;  // 释放 pWorker 指向的 ThreadWorker 对象内存
 		}
@@ -104,7 +105,9 @@ public:
 			m_worker.store(NULL);  // 将 m_worker 中存储的指针置为 NULL
 			return;
 		}
-		m_worker.store(new ::ThreadWorker(worker));  // 新建 ThreadWorker 对象并存储其指针到 m_worker
+		::ThreadWorker* pWorker = new ::ThreadWorker(worker);  // 动态创建ThreadWorker对象，将worker作为参数初始化，指针pWorker指向该对象
+		TRACE("New pWorker = %08X m_worker = %08X\r\n", pWorker, m_worker.load());  // 以8位十六进制格式输出pWorker指针值和m_worker原子加载的值，换行
+		m_worker.store(pWorker);  // 将pWorker指针值原子存储到m_worker中
 	}
 
 	//true表示空闲 false表示已经分配了工作，注释：说明 IsIdle 方法返回 true 时线程空闲，返回 false 时已分配工作
@@ -133,7 +136,9 @@ private:
 						OutputDebugString(str); // 输出调试字符串
 					}
 					if (ret < 0) { // 如果返回值小于 0
-						m_worker.store(NULL);
+						::ThreadWorker* pWorker = m_worker.load();  // 原子加载m_worker存储的ThreadWorker指针到pWorker
+						m_worker.store(NULL);  // 原子地将m_worker存储的值设为NULL
+						delete pWorker;  // 释放pWorker指向的ThreadWorker对象内存
 					}
 				}
 			}

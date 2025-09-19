@@ -70,8 +70,10 @@ public:
 	operator LPDWORD() { // 类型转换运算符，将当前对象转换为 LPDWORD（DWORD*）类型
 		return &m_received; // 返回 m_received 成员变量的地址
 	}
-	LPWSABUF RecvWSABuffer();
-	LPWSABUF SendWSABuffer();
+	LPWSABUF RecvWSABuffer();    // 声明函数RecvWSABuffer，返回指向WSABUF结构的指针，用于接收数据的缓冲区相关
+	LPWSAOVERLAPPED RecvOverlapped(); // 声明函数RecvOverlapped，返回指向OVERLAPPED结构的指针，用于接收操作的重叠I/O相关
+	LPWSABUF SendWSABuffer();    // 声明函数SendWSABuffer，返回指向WSABUF结构的指针，用于发送数据的缓冲区相关
+	LPWSAOVERLAPPED SendOverlapped(); // 声明函数SendOverlapped，返回指向OVERLAPPED结构的指针，用于发送操作的重叠I/O相关	
 	DWORD& flags() { return m_flags; }  // 返回m_flags的引用，可用于修改m_flags的值
 	sockaddr_in* GetLocalAddr() { return &m_laddr; }  // 获取本地地址，返回 m_laddr 的引用
 	sockaddr_in* GetRemoteAddr() { return &m_raddr; }  // 获取远程地址，返回 m_raddr 的引用
@@ -159,32 +161,11 @@ public:
 	}
 	~EdoyunServer();// 析构函数，此处为空，可能后续补充资源释放逻辑
 	bool StartService();
-	bool NewAccept()
-	{
-		PCLIENT pClient(new EdoyunClient()); // 创建 EdoyunClient 对象的智能指针 pClient
-		pClient->SetOverlapped(pClient); // 调用 pClient 的 SetOverlapped 方法，设置重叠 I/O 结构中关联的客户端智能指针为 pClient 自身
-		m_client.insert(std::pair<SOCKET, PCLIENT>(*pClient, pClient)); // 将客户端套接字（*pClient 转换为 SOCKET）和智能指针 pClient 组成键值对，插入到 m_client 容器中
-		if (!AcceptEx(m_sock, // 调用 AcceptEx 函数接受客户端连接，若返回 FALSE 表示接受失败
-			*pClient,
-			*pClient,
-			0,
-			sizeof(sockaddr_in) + 16, sizeof(sockaddr_in) + 16,
-			*pClient, *pClient)) {
-			closesocket(m_sock); // 关闭套接字 m_sock
-			m_sock = INVALID_SOCKET; // 将套接字 m_sock 设为无效
-			m_hIOCP = INVALID_HANDLE_VALUE; // 将 I/O 完成端口句柄设为无效
-			return false; // 函数返回
-		}
-		return true;
-	}
+	bool NewAccept();
+	void BindNewSocket(SOCKET s);  // 声明函数BindNewSocket，参数为套接字s，用于将新套接字s进行绑定等相关操作	
 
 private:
-	void CreateSocket()
-	{
-		m_sock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-		int opt = 1;
-		setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));// 设置套接字选项，允许重用本地地址和端口 SO_REUSEADDR：具体选项，允许地址重用（解决端口占用问题）
-	}
+	void CreateSocket();
 	int threadIocp();
 private:
 	EdoyunThreadPool m_pool; // 线程池，用于管理服务器线程
