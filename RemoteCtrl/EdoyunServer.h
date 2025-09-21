@@ -15,10 +15,10 @@ enum EdoyunOperator {
 	EError    // 错误状态
 };
 
-
 class EdoyunServer;
 class EdoyunClient;
-typedef std::shared_ptr<EdoyunClient> PCLIENT; // 定义类型别名 PCLIENT，代表 EdoyunClient 类型的智能指针（std::shared_ptr），用于更方便地管理 EdoyunClient 对象的生命周期
+typedef std::shared_ptr<EdoyunClient> PCLIENT; //PCLIENT（即 std::shared_ptr<EdoyunClient>）通过 自动内存管理、引用计数 和 安全共享 机制，解决了多线程异步环境下客户端对象的生命周期管理问题，
+												//减少了内存泄漏和野指针风险，同时简化了代码中资源管理的复杂度。
 
 class EdoyunOverlapped { // 定义 EdoyunOverlapped 类，用于封装 Windows 重叠 I/O 结构
 public:

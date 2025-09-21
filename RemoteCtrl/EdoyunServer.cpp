@@ -145,6 +145,8 @@ EdoyunServer::~EdoyunServer()
 	WSACleanup();
 }
 
+//1. 服务端初始化（EdoyunServer）
+//服务端通过 StartService 方法启动服务，完成套接字创建、绑定、监听及 IOCP 初始化，为接收客户端连接做准备。
 bool EdoyunServer::StartService()
 {
 	CreateSocket();
@@ -229,7 +231,8 @@ int EdoyunServer::threadIocp()
 	}
 	return 0; // 函数返回 0
 }
-
+//3. 服务端接受连接（NewAccept + AcceptOverlapped）
+//服务端通过 NewAccept 发起 AcceptEx 异步接受连接，并在连接完成后通过 IOCP 回调处理。
 bool EdoyunServer::NewAccept()
 {
 	PCLIENT pClient(new EdoyunClient()); // 创建 EdoyunClient 对象的智能指针 pClient

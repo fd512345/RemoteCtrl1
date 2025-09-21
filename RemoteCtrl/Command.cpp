@@ -26,7 +26,8 @@ CCommand::CCommand() :threadid(0)
 	}
 }
 
-
+//5. 服务端处理测试命令并响应
+//服务端通过 CCommand 类的 ExecuteCommand 处理客户端命令，若为连接测试命令（1981），则返回响应数据包。
 int CCommand::ExecuteCommand(int nCmd,std::list<CPacket>& lstPacket, CPacket& inPacket)
 {
 	std::map<int, CMDFUNC>::iterator it = m_mapFunction.find(nCmd);

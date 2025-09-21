@@ -186,7 +186,6 @@ protected:
 };
 
 
-
 template<class T>
 class EdoyunSendQueue :public CEdoyunQueue<T>, public ThreadFuncBase
 {

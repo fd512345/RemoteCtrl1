@@ -76,6 +76,9 @@ CClientSocket::CClientSocket() :m_nIP(INADDR_ANY), m_nPort(0), m_sock(INVALID_SO
 		}
 	}
 }
+
+//2. 客户端连接请求（ClientSocket）
+//客户端通过 InitSocket 方法初始化套接字，并向服务端发起连接请求。
 bool CClientSocket::InitSocket()
 {     // 初始化Socket并连接服务器
 	if (m_sock != INVALID_SOCKET)CloseSocket();  // 关闭已有连接
@@ -98,9 +101,10 @@ bool CClientSocket::InitSocket()
 		return false;
 	}
 	TRACE("socket init done!\r\n");
-	return true;                           // 连接成功
+	return true;                           // 连接成功 
 }
-
+//4. 客户端发送测试命令
+//客户端通过 SendPacket 发送特定测试命令（如命令标识 1981），封装为 CPacket 数据包。
 bool CClientSocket::SendPacket(HWND hWnd, const CPacket& pack, bool isAutoClosed, WPARAM wParam)
 {
 	// 根据isAutoClosed标志确定模式，若为true则模式为CSM_AUTOCLOSE，否则为0
