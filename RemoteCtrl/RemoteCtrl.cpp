@@ -37,11 +37,51 @@ using namespace std;  // 使用标准命名空间
 4 性能测试
 */
 void iocp();
-int main()  // 主函数
+
+void udp_server();  // 声明 udp_server 函数，用于实现 UDP 服务器相关功能
+void udp_client(bool ishost = true);  // 声明 udp_client 函数，用于实现 UDP 客户端相关功能
+
+
+int main(int argc, char* argv[])  // 主函数
 {
 	if (!CEdoyunTool::Init()) return 1; // 调用工具类初始化方法，若失败则返回 1
 
-	iocp();
+	if (argc == 1) {  // 检查命令行参数数量，如果没有额外参数     服务器
+		char wstrDir[MAX_PATH];  // 定义存储当前目录的宽字符数组
+		GetCurrentDirectoryA(MAX_PATH, wstrDir);  // 获取当前工作目录
+		STARTUPINFOA si{};  // 定义进程启动信息结构体
+		PROCESS_INFORMATION pi{};  // 定义进程信息结构体
+		string strCmd = argv[0];  // 获取当前程序路径
+		strCmd += " 1";  // 拼接命令行参数" 1"
+		// 创建新进程，带有新控制台窗口，参数为当前程序路径加" 1"
+		BOOL bRet = CreateProcessA(NULL, (LPSTR)strCmd.c_str(), NULL, NULL, FALSE, 0, NULL, wstrDir, &si, &pi);
+		if (bRet) {  // 如果进程创建成功
+			CloseHandle(pi.hThread);  // 关闭线程句柄
+			CloseHandle(pi.hProcess);  // 关闭进程句柄
+			TRACE("进程ID:%d\r\n", pi.dwProcessId);  // 输出进程ID
+			TRACE("线程ID:%d\r\n", pi.dwThreadId);  // 输出线程ID
+			strCmd += "2";  // 在现有命令后再拼接"2"，变为" 12"
+			// 再次创建新进程，参数为当前程序路径加" 12"
+			bRet = CreateProcessA(NULL, (LPSTR)strCmd.c_str(), NULL, NULL, FALSE, 0, NULL, wstrDir, &si, &pi);
+			if (bRet) {  // 如果第二次进程创建成功
+				CloseHandle(pi.hThread);  // 关闭线程句柄
+				CloseHandle(pi.hProcess);  // 关闭进程句柄
+				TRACE("进程ID:%d\r\n", pi.dwProcessId);  // 输出进程ID
+				TRACE("线程ID:%d\r\n", pi.dwThreadId);  // 输出线程ID
+				udp_server();  // 调用UDP服务器函数
+			}
+		}
+	}
+	else if (argc == 2)//主客户端
+	{
+		udp_client();
+	}
+	else//从客户端
+	{
+		udp_client(false);
+	}
+
+	//iocp();
 
 
 
@@ -78,4 +118,22 @@ void iocp()
 	EdoyunServer server; // 创建 EdoyunServer 类的对象 server
 	server.StartService(); // 调用 server 的 StartService 方法，启动服务
 	getchar(); // 等待用户输入一个字符，用于阻塞程序，防止服务启动后立即退出
+}
+
+
+void udp_server() {
+	// 打印当前文件路径、代码行号、函数名
+	printf("%s (%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);
+	getchar();  // 等待用户输入，暂停程序
+}
+
+void udp_client(bool ishost) {
+	if (ishost) {
+		// 若ishost为true，打印当前文件路径、代码行号、函数名
+		printf("%s (%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);
+	}
+	else {
+		// 若ishost为false，打印当前文件路径、代码行号、函数名
+		printf("%s (%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);
+	}
 }

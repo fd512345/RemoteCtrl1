@@ -5,6 +5,9 @@
 #include <vector>
 #include <mutex>
 
+//该头文件实现了一个轻量级的线程池框架，用于管理多个工作线程并分配任务执行。
+//核心功能通过EdoyunThread（单个线程封装）和EdoyunThreadPool（线程池管理）两个类实现，配合ThreadWorker（任务封装）完成任务分发与执行
+
 class ThreadFuncBase {}; // 定义基础线程函数类，作为基类
 typedef int (ThreadFuncBase::* FUNCTYPE)(); // 定义成员函数指针类型 FUNCTYPE，指向 ThreadFuncBase 类中返回 int 且无参数的成员函数
 

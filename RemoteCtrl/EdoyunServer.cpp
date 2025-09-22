@@ -3,6 +3,10 @@
 #include "CEdoyunQueue.h"
 #include "EdoyunTool.h"
 #pragma warning (disable:4407)
+
+//EdoyunServer.cpp 是基于 IOCP（I / O 完成端口）的异步网络服务器核心实现文件，
+//封装了服务器启动、连接管理、异步 I / O 操作（接受连接、收发数据）及线程池调度等关键逻辑
+
 template<EdoyunOperator op>
 AcceptOverlapped<op>::AcceptOverlapped() {  // AcceptOverlapped 类的构造函数
 	m_worker = ThreadWorker(this, (FUNCTYPE)&AcceptOverlapped<op>::AcceptWorker);  // 初始化线程工作对象 m_worker，绑定当前对象和 AcceptWorker 方法
@@ -193,7 +197,7 @@ int EdoyunServer::threadIocp()
 	DWORD transferred = 0; // 用于存储传输的字节数
 	ULONG_PTR CompletionKey = 0; // 用于存储完成键
 	OVERLAPPED* lpOverlapped = NULL; // 用于存储重叠 I/O 结构指针
-	// 从 I/O 完成端口获取完成的 I/O 操作状态，INFINITE 表示无限等待
+	// 从 I/O 完成端口获取完成的 I/O 操作状态，触发后续处理（如threadIocp函数）INFINITE 表示无限等待
 	if (GetQueuedCompletionStatus(m_hIOCP, &transferred, &CompletionKey, &lpOverlapped, INFINITE)) {
 		if ((CompletionKey != 0)) { // 判断传输字节数大于0且完成键非0
 			// 通过 CONTAINING_RECORD 宏，从 OVERLAPPED 结构指针获取包含它的 EdoyunOverlapped 结构指针

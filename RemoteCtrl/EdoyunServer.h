@@ -4,7 +4,8 @@
 #include "CEdoyunQueue.h"
 #include <winsock.h>
 #include <map>
-
+//该头文件（EdoyunServer.h）是一个基于 Windows 重叠 I/O 和 IOCP（I/O 完成端口）的异步网络服务器框架核心定义，
+//主要作用是封装服务器与客户端的通信逻辑、异步 I/O 操作管理及线程池调度
 
 
 enum EdoyunOperator {
