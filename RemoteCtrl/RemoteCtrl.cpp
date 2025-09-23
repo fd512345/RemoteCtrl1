@@ -133,62 +133,33 @@ void iocp()
 }
 
 
+
+#include "ESocket.h"
+#include "ENetwork.h"
 // 初始化 Winsock 环境
-void udp_server() {
-	// 打印当前文件路径、代码行号、函数名
+
+int RecvFromCB(void* arg, const EBuffer& buffer, ESockaddrIn& addr) {  // 接收数据回调函数，参数为通用指针arg、常量EBuffer引用buffer、ESockaddrIn引用addr
+	EServer* server = (EServer*)arg;  // 将arg强制转换为EServer*类型的指针server
+	return server->Sendto(addr, buffer);  // 调用server的Sendto方法，向addr指定的地址发送buffer中的数据，并返回该方法的返回值
+}
+
+int SendToCB(void* arg, const ESockaddrIn& addr, int ret) {  // 发送数据回调函数，参数为通用指针arg
+	EServer* server = (EServer*)arg;  // 将arg强制转换为EServer*类型的指针server
+	printf("sendto done!%p\r\n", server);  // 打印“sendto done!”以及server指针的地址值
+	return 0;  // 返回0
+}
+void udp_server()
+{
+	std::list<ESockaddrIn> lstclients;  // 定义ESockaddrIn类型的列表lstclients，用于存储客户端地址
 	printf("%s (%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);
-	SOCKET sock = socket(PF_INET, SOCK_DGRAM, 0);  // 创建一个 UDP 套接字
-	if (sock == INVALID_SOCKET) {  // 检查套接字是否为无效套接字
-		// 若套接字无效，打印当前文件路径、代码行号、函数名及错误提示
-		printf("%s (%d):%s ERROR\r\n", __FILE__, __LINE__, __FUNCTION__);
-		return;  // 直接返回，不再执行后续代码
-	}
-	std::list<sockaddr_in> lstclients;  // 定义一个存储 sockaddr_in 类型元素的标准列表 lstclients，用于保存客户端地址信息
-	sockaddr_in server, client;  // 定义服务器和客户端的地址结构体
-	memset(&server, 0, sizeof(server));  // 将服务器地址结构体清零
-	memset(&client, 0, sizeof(client));  // 将客户端地址结构体清零
-	server.sin_family = AF_INET;  // 设置地址族为IPv4
-	server.sin_port = htons(20000);  // 设置服务器端口为20000（网络字节序）
-	server.sin_addr.s_addr = inet_addr("127.0.0.1");  // 设置服务器IP为127.0.0.1
-	if (-1 == bind(sock, (sockaddr*)&server, sizeof(server))) {  // 绑定套接字到服务器地址，若失败进入分支
-		// 打印当前文件、行号、函数名及错误码，关闭套接字并返回
-		printf("%s(%d):%s ERROR(%d)!!!\r\n", __FILE__, __LINE__, __FUNCTION__, WSAGetLastError());
-		closesocket(sock);
-		return;
-	}
-	std::string buf;  // 定义用于接收数据的字符串缓冲区
-	buf.resize(1024 * 256);  // 调整缓冲区大小为 1024*256 字节
-	memset((char*)buf.c_str(), 0, buf.size());  // 将缓冲区初始化为全 0
-	int len = sizeof(client);  // 用于存储客户端地址长度
-	int ret = 0;  // 用于存储 recvfrom 和 sendto 的返回值
-	while (!_kbhit()) {  // 当没有键盘输入时循环
-		// 从套接字接收数据，存储到 buf，同时获取客户端地址
-		ret = recvfrom(sock, (char*)buf.c_str(), buf.size(), 0, (sockaddr*)&client, &len);
-		if (ret > 0) {  // 如果接收数据长度大于 0
-			if (lstclients.size() <= 0) {  // 检查客户端列表 lstclients 大小是否小于等于 0
-				lstclients.push_back(client);  // 将当前客户端地址添加到列表中
-				// 打印当前文件路径、代码行号、函数名以及客户端的 IP 和端口（端口转为主机字节序）
-				printf("%s(%d):%s ip %08X port %d\r\n", __FILE__, __LINE__, __FUNCTION__, client.sin_addr.s_addr, ntohs(client.sin_port));
-				// 向客户端发送数据，参数为套接字、数据、长度、标志、客户端地址、地址长度
-				ret = sendto(sock, buf.c_str(), ret, 0, (sockaddr*)&client, len);
-				printf("%s(%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);  // 打印当前文件、行号、函数名
-			}
-			else {
-				// 将列表中第一个客户端地址拷贝到 buf 中
-				memcpy((void*)buf.c_str(), &lstclients.front(), sizeof(lstclients.front()));
-				// 向客户端发送列表中第一个客户端地址数据，参数为套接字、数据、长度、标志、客户端地址、地址长度
-				ret = sendto(sock, buf.c_str(), sizeof(lstclients.front()), 0, (sockaddr*)&client, len);
-				printf("%s(%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);  // 打印当前文件、行号、函数名
-			}
-			// CEdoyunTool::Dump((BYTE*)buf.c_str(), ret);  // 注释：调用工具类的 Dump 方法（当前被注释）
-		}
-		else {
-			// 打印当前文件、行号、函数名、Winsock 错误码以及 ret 的值，用于调试错误场景
-			printf("%s(%d):%s ERROR(%d)!!! ret = %d\r\n", __FILE__, __LINE__, __FUNCTION__, WSAGetLastError(), ret);
-		}
-	}
-	closesocket(sock);  // 关闭套接字
-	printf("%s(%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);  // 打印当前文件、行号、函数名
+	EServerParameter param(
+		"127.0.0.1", 20000, ETYPE::ETypeUDP, NULL, NULL, NULL, RecvFromCB, SendToCB
+	);  // 创建EServerParameter对象param，指定IP为127.0.0.1、端口20000、类型为UDP，部分回调设为NULL，指定接收（RecvFromCB）和发送（SendToCB）回调
+	EServer server(param);  // 用param参数创建EServer对象server
+	server.Invoke(&server);  // 调用server的Invoke方法，传入参数server
+	printf("%s (%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);
+	getchar();  // 等待用户输入一个字符，阻塞程序继续执行
+	return;
 }
 
 void udp_client(bool ishost) {
@@ -206,7 +177,7 @@ void udp_client(bool ishost) {
 	}
 	if (ishost) {  // 主客户端代码分支
 		printf("%s(%d):%s\r\n", __FILE__, __LINE__, __FUNCTION__);  // 打印当前文件、行号、函数名
-		std::string msg = "hello world!\n";  // 定义要发送的消息
+		EBuffer msg = "hello world!\n";  // 定义要发送的消息
 		// 向服务器发送消息，参数为套接字、消息内容、长度、标志、服务器地址、地址长度
 		int ret = sendto(sock, msg.c_str(), msg.size(), 0, (sockaddr*)&server, sizeof(server));
 		printf("host %s(%d):%s ret = %d\r\n", __FILE__, __LINE__, __FUNCTION__, ret);  // 打印发送操作的返回值
