@@ -13,8 +13,8 @@ class ENetwork  // 定义ENetwork类，暂为空类
 typedef int(*AcceptFunc)(void* arg, ESOCKET& client);  // 定义AcceptFunc函数指针类型，处理客户端连接
 typedef int(*RecvFunc)(void* arg, const EBuffer& buffer);  // 定义RecvFunc函数指针类型，处理接收数据
 typedef int(*SendFunc)(void* arg, ESOCKET& client, int ret);  // 定义SendFunc函数指针类型，处理发送数据
-typedef int (*RecvFromFunc)(void* arg, const EBuffer& buffer, ESockaddrIn& addr);  // 定义RecvFromFunc函数指针类型，用于处理从指定地址接收数据的逻辑，参数为void*类型参数、EBuffer类型的缓冲区、ESockaddrIn类型的地址，返回int
-typedef int (*SendToFunc)(void* arg, const ESockaddrIn& addr,int ret);  // 定义SendToFunc函数指针类型，用于处理向指定地址发送数据的逻辑，参数为void*类型参数，返回int
+typedef int(*RecvFromFunc)(void* arg, const EBuffer& buffer, ESockaddrIn& addr);  // 定义RecvFromFunc函数指针类型，用于处理从指定地址接收数据的逻辑，参数为void*类型参数、EBuffer类型的缓冲区、ESockaddrIn类型的地址，返回int
+typedef int(*SendToFunc)(void* arg, const ESockaddrIn& addr, int ret);  // 定义SendToFunc函数指针类型，用于处理向指定地址发送数据的逻辑，参数为void*类型参数，返回int
 
 class EServerParameter  // 定义EServerParameter类
 {

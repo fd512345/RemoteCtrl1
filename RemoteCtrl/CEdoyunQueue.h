@@ -31,6 +31,7 @@ public:
 public:
 	CEdoyunQueue() {
 		m_lock = false;
+		//IOCP 的实现首先需要创建一个完成端口，这是整个 IOCP 机制的核心。
 		m_hCompeletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 1);
 		m_hThread = INVALID_HANDLE_VALUE;
 		if (m_hCompeletionPort != NULL) {
@@ -142,41 +143,42 @@ protected:
 			break;
 		}
 	}
-	virtual void threadMain() {
-		DWORD dwTransferred = 0;
-		PPARAM* pParam = NULL;
-		ULONG_PTR CompletionKey = 0;
-		OVERLAPPED* pOverlapped = NULL;
-		while (GetQueuedCompletionStatus(
-			m_hCompeletionPort,
-			&dwTransferred,
-			&CompletionKey,
-			&pOverlapped, INFINITE))
+	virtual void threadMain() {  // 线程主函数，声明为虚函数
+		DWORD dwTransferred = 0;  // 用于存储传输的字节数，初始化为0
+		PPARAM* pParam = NULL;  // 指向参数结构体指针的指针，初始化为空
+		ULONG_PTR CompletionKey = 0;  // 完成键，用于标识完成端口上的特定操作，初始化为0
+		OVERLAPPED* pOverlapped = NULL;  // 指向OVERLAPPED结构体的指针，用于异步I/O，初始化为空
+		while (GetQueuedCompletionStatus(  // 循环获取完成端口上的完成状态
+			m_hCompeletionPort,  // 完成端口句柄
+			&dwTransferred,  // 接收传输的字节数
+			&CompletionKey,  // 接收完成键
+			&pOverlapped, INFINITE))  // 接收OVERLAPPED指针，等待时间为无限
 		{
-			if ((dwTransferred == 0) || (CompletionKey == NULL)) {
-				printf("thread is prepare to exit!\r\n");
-				break;
+			if ((dwTransferred == 0) || (CompletionKey == NULL)) {  // 判断传输字节数为0或完成键为空的情况
+				printf("thread is prepare to exit!\r\n");  // 打印线程准备退出的信息
+				break;  // 跳出当前循环
 			}
 
-			pParam = (PPARAM*)CompletionKey;
-			DealParam(pParam);
+			pParam = (PPARAM*)CompletionKey;  // 将完成键转换为PPARAM*类型的指针
+			DealParam(pParam);  // 处理参数的函数调用
 		}
-		while (GetQueuedCompletionStatus(
-			m_hCompeletionPort,
-			&dwTransferred,
-			&CompletionKey,
-			&pOverlapped, 0))
+		while (GetQueuedCompletionStatus(  // 再次循环获取完成端口上的完成状态
+			m_hCompeletionPort,  // 完成端口句柄
+			&dwTransferred,  // 接收传输的字节数
+			&CompletionKey,  // 接收完成键
+			&pOverlapped, 0))  // 接收OVERLAPPED指针，等待时间为0（非阻塞）
 		{
-			if ((dwTransferred == 0) || (CompletionKey == NULL)) {
-				printf("thread is prepare to exit!\r\n");
-				continue;
+			if ((dwTransferred == 0) || (CompletionKey == NULL)) {  // 判断传输字节数为0或完成键为空的情况
+				printf("thread is prepare to exit!\r\n");  // 打印线程准备退出的信息
+				continue;  // 继续下一次循环
 			}
-			pParam = (PPARAM*)CompletionKey;
-			DealParam(pParam);
+
+			pParam = (PPARAM*)CompletionKey;  // 将完成键转换为PPARAM*类型的指针
+			DealParam(pParam);  // 处理参数的函数调用
 		}
-		HANDLE hTemp = m_hCompeletionPort;
-		m_hCompeletionPort = NULL;
-		CloseHandle(hTemp);
+		HANDLE hTemp = m_hCompeletionPort;  // 临时句柄变量，保存完成端口句柄
+		m_hCompeletionPort = NULL;  // 将完成端口句柄置空
+		CloseHandle(hTemp);  // 关闭临时保存的完成端口句柄
 	}
 protected:
 	std::list<T> m_lstData;
